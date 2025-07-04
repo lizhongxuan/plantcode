@@ -1,0 +1,84 @@
+@startuml 交互序列图
+title AI辅助业务分析与文档生成平台 - 交互流程
+
+participant "用户" as User
+participant "Web界面" as WebUI
+participant "对话分析服务" as ChatService
+participant "业务分析引擎" as AnalysisEngine
+participant "大语言模型" as LLM
+participant "PUML生成器" as PUMLGen
+participant "文档生成器" as DocGen
+participant "数据库" as DB
+
+== 阶段1：业务需求分析 ==
+
+User -> WebUI: 输入业务需求描述
+WebUI -> ChatService: 发送用户描述
+ChatService -> AnalysisEngine: 分析业务需求
+AnalysisEngine -> LLM: 请求分析业务逻辑
+LLM --> AnalysisEngine: 返回分析结果
+
+AnalysisEngine -> AnalysisEngine: 识别缺失信息
+alt 有缺失信息
+    AnalysisEngine -> LLM: 生成补充问题
+    LLM --> AnalysisEngine: 返回问题清单
+    AnalysisEngine --> WebUI: 返回问题
+    WebUI --> User: 显示问题清单
+    
+    loop 用户回答问题
+        User -> WebUI: 回答问题
+        WebUI -> ChatService: 发送答案
+        ChatService -> AnalysisEngine: 更新业务理解
+    end
+else 信息完整
+    AnalysisEngine -> AnalysisEngine: 业务分析完成
+end
+
+ChatService -> DB: 保存对话记录
+
+== 阶段2：文档生成 ==
+
+AnalysisEngine -> PUMLGen: 请求生成流程图
+PUMLGen -> LLM: 生成业务流程PUML
+LLM --> PUMLGen: 返回流程图PUML
+
+AnalysisEngine -> PUMLGen: 请求生成架构图
+PUMLGen -> LLM: 生成系统架构PUML
+LLM --> PUMLGen: 返回架构图PUML
+
+AnalysisEngine -> DocGen: 请求生成开发文档
+DocGen -> LLM: 生成开发步骤
+LLM --> DocGen: 返回开发文档
+
+PUMLGen -> DB: 保存PUML文件
+DocGen -> DB: 保存开发文档
+
+AnalysisEngine --> WebUI: 返回生成结果
+WebUI --> User: 显示PUML和文档
+
+== 阶段3：用户修改完善 ==
+
+alt 用户修改PUML
+    User -> WebUI: 编辑PUML代码
+    WebUI -> PUMLGen: 验证PUML语法
+    PUMLGen --> WebUI: 返回预览图
+    WebUI --> User: 实时显示图表
+    WebUI -> DB: 保存修改后的PUML
+end
+
+alt 用户修改开发文档
+    User -> WebUI: 编辑开发步骤
+    WebUI -> DB: 保存修改后的文档
+end
+
+User -> WebUI: 确认最终文档
+WebUI -> DB: 标记项目完成
+
+note over User, DB
+  流程专注核心功能：
+  1. 对话分析 - 理解业务需求，识别缺失信息
+  2. 文档生成 - 生成PUML图表和开发步骤文档
+  3. 用户修改 - 允许用户直接修改和完善
+end note
+
+@enduml 

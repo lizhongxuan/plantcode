@@ -1,0 +1,96 @@
+@startuml 业务流程图
+title AI辅助业务分析与文档生成平台 - 流程图
+
+|用户|
+start
+:描述业务需求;
+note right : 用自然语言描述\n想要开发的系统功能
+
+|AI系统|
+:接收并分析业务描述;
+:识别业务实体和流程;
+note right
+  分析内容：
+  • 核心功能
+  • 参与角色
+  • 主要流程
+  • 数据实体
+end note
+
+:识别缺失信息;
+note right
+  检查是否缺少：
+  • 具体业务规则
+  • 异常处理逻辑
+  • 数据结构定义
+  • 外部接口信息
+end note
+
+if (有缺失信息?) then (是)
+  :生成问题清单;
+  |用户|
+  :回答补充问题;
+  |AI系统|
+  :更新业务理解;
+else (否)
+  :业务分析完整;
+endif
+
+partition "文档生成阶段" {
+  :生成业务流程图PUML;
+  note right : 基于业务逻辑\n生成活动图或序列图
+  
+  :生成系统架构图PUML;
+  note right : 基于功能需求\n生成组件架构图
+  
+  :生成开发步骤文档;
+  note right
+    包含：
+    • 功能模块清单
+    • 开发优先级
+    • 技术选型建议
+    • 数据库设计
+    • API接口设计
+  end note
+}
+
+|用户|
+:查看生成的文档;
+
+partition "用户修改阶段" {
+  if (需要修改PUML?) then (是)
+    :直接编辑PUML代码;
+    :实时预览图表效果;
+  else (否)
+  endif
+  
+  if (需要修改开发步骤?) then (是)
+    :编辑开发文档;
+    :调整功能优先级;
+    :修改技术选型;
+  else (否)
+  endif
+}
+
+:确认最终文档;
+:开始按步骤开发;
+stop
+
+' 样式定义
+skinparam activity {
+  BackgroundColor lightcyan
+  BorderColor darkblue
+  FontSize 12
+}
+
+skinparam partition {
+  BackgroundColor lightgray
+  BorderColor darkgray
+}
+
+skinparam note {
+  BackgroundColor lightyellow
+  BorderColor orange
+}
+
+@enduml 

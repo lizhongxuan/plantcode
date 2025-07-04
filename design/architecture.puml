@@ -1,0 +1,68 @@
+@startuml 系统架构图
+title AI辅助业务分析与文档生成平台 - 架构图
+
+package "前端界面层" {
+  [Web界面] as WebUI
+  [PUML编辑器] as Editor
+}
+
+package "核心服务层" {
+  [对话分析服务] as ChatService
+  [业务分析引擎] as AnalysisEngine
+  [PUML生成器] as PUMLGenerator
+  [文档生成器] as DocGenerator
+  [模块管理器] as ModuleManager
+}
+
+package "AI服务" {
+  [大语言模型] as LLM
+}
+
+package "数据存储" {
+  database "MySQL" as DB {
+    [对话记录]
+    [生成结果]
+    [项目数据]
+    [模块库数据]
+  }
+}
+
+' 连接关系
+WebUI --> ChatService : 用户对话输入
+Editor --> PUMLGenerator : PUML编辑
+ChatService --> AnalysisEngine : 业务逻辑分析
+AnalysisEngine --> LLM : AI分析处理
+AnalysisEngine --> PUMLGenerator : 生成PUML图表
+AnalysisEngine --> DocGenerator : 生成开发文档
+AnalysisEngine --> ModuleManager : 业务模块切分
+ModuleManager --> DB : 保存模块设计
+ChatService --> DB : 保存对话
+PUMLGenerator --> DB : 保存PUML
+DocGenerator --> DB : 保存文档
+WebUI --> DB : 获取历史数据
+
+' 样式定义
+skinparam package {
+  BackgroundColor lightblue
+  BorderColor darkblue
+}
+
+skinparam component {
+  BackgroundColor lightyellow
+  BorderColor orange
+}
+
+skinparam database {
+  BackgroundColor lightgreen
+  BorderColor darkgreen
+}
+
+note top of AnalysisEngine : 核心引擎：\n1. 分析业务逻辑\n2. 识别缺失信息\n3. 生成询问问题
+
+note right of PUMLGenerator : 生成两种PUML：\n- 业务流程图\n- 系统架构图
+
+note right of DocGenerator : 生成开发步骤文档：\n- 功能清单\n- 开发计划\n- 技术选型建议
+
+note right of ModuleManager : 模块化管理：\n- 业务逻辑切分\n- 通用模块提取\n- 模块复用管理
+
+@enduml 

@@ -1,0 +1,242 @@
+@startuml 数据模型
+title AI辅助项目开发平台 - 数据模型图
+
+entity "用户" as User {
+  + user_id : UUID [PK]
+  --
+  username : VARCHAR(50)
+  email : VARCHAR(100)
+  password_hash : VARCHAR(255)
+  full_name : VARCHAR(100)
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+  last_login : TIMESTAMP
+  status : VARCHAR(20)
+  preferences : JSON
+}
+
+entity "项目" as Project <<core>> {
+  + project_id : UUID [PK]
+  --
+  user_id : UUID [FK]
+  project_name : VARCHAR(100)
+  description : TEXT
+  project_type : VARCHAR(50)
+  status : VARCHAR(20)
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+  completion_percentage : INTEGER
+  settings : JSON
+}
+
+entity "需求分析" as Requirement <<core>> {
+  + requirement_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  raw_requirement : TEXT
+  structured_requirement : JSON
+  completeness_score : DECIMAL(3,2)
+  analysis_status : VARCHAR(50)
+  missing_info_types : JSON
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "对话会话" as ChatSession {
+  + session_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  user_id : UUID [FK]
+  session_type : VARCHAR(50)
+  started_at : TIMESTAMP
+  ended_at : TIMESTAMP
+  status : VARCHAR(20)
+  context : JSON
+}
+
+entity "对话消息" as ChatMessage {
+  + message_id : UUID [PK]
+  --
+  session_id : UUID [FK]
+  sender_type : VARCHAR(20)
+  message_content : TEXT
+  message_type : VARCHAR(50)
+  metadata : JSON
+  timestamp : TIMESTAMP
+  processed : BOOLEAN
+}
+
+entity "补充问题" as Question {
+  + question_id : UUID [PK]
+  --
+  requirement_id : UUID [FK]
+  question_text : TEXT
+  question_category : VARCHAR(50)
+  priority_level : INTEGER
+  answer_text : TEXT
+  answer_status : VARCHAR(20)
+  created_at : TIMESTAMP
+  answered_at : TIMESTAMP
+}
+
+entity "PUML图表" as PUMLDiagram {
+  + diagram_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  diagram_type : VARCHAR(50)
+  diagram_name : VARCHAR(100)
+  puml_content : TEXT
+  rendered_url : VARCHAR(500)
+  version : INTEGER
+  is_validated : BOOLEAN
+  validation_feedback : TEXT
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "业务模块" as BusinessModule <<core>> {
+  + module_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  module_name : VARCHAR(100)
+  description : TEXT
+  module_type : VARCHAR(50)
+  complexity_level : VARCHAR(20)
+  business_logic : JSON
+  interfaces : JSON
+  dependencies : JSON
+  is_reusable : BOOLEAN
+  created_at : TIMESTAMP
+}
+
+entity "通用模块库" as CommonModule <<core>> {
+  + common_module_id : UUID [PK]
+  --
+  module_name : VARCHAR(100)
+  category : VARCHAR(50)
+  description : TEXT
+  functionality : JSON
+  interface_spec : JSON
+  code_template : TEXT
+  usage_examples : JSON
+  version : VARCHAR(20)
+  downloads_count : INTEGER
+  rating : DECIMAL(2,1)
+  tags : JSON
+  created_by : UUID
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "模块使用记录" as ModuleUsage {
+  + usage_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  common_module_id : UUID [FK]
+  business_module_id : UUID [FK]
+  usage_type : VARCHAR(50)
+  customization : JSON
+  used_at : TIMESTAMP
+}
+
+entity "生成文档" as Document {
+  + document_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  document_type : VARCHAR(50)
+  document_name : VARCHAR(100)
+  content : TEXT
+  format : VARCHAR(20)
+  file_path : VARCHAR(500)
+  version : INTEGER
+  generated_at : TIMESTAMP
+  is_final : BOOLEAN
+}
+
+entity "生成代码" as Code {
+  + code_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  module_id : UUID [FK]
+  file_name : VARCHAR(255)
+  file_path : VARCHAR(500)
+  code_content : TEXT
+  language : VARCHAR(20)
+  code_type : VARCHAR(50)
+  line_count : INTEGER
+  generated_at : TIMESTAMP
+  is_compiled : BOOLEAN
+  compilation_errors : TEXT
+}
+
+entity "项目配置" as ProjectConfig {
+  + config_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  tech_stack : JSON
+  database_config : JSON
+  deployment_config : JSON
+  api_config : JSON
+  security_config : JSON
+  performance_config : JSON
+  created_at : TIMESTAMP
+  updated_at : TIMESTAMP
+}
+
+entity "测试用例" as TestCase {
+  + test_id : UUID [PK]
+  --
+  project_id : UUID [FK]
+  module_id : UUID [FK]
+  test_name : VARCHAR(100)
+  test_type : VARCHAR(50)
+  test_description : TEXT
+  test_steps : JSON
+  expected_result : TEXT
+  test_data : JSON
+  priority : VARCHAR(20)
+  status : VARCHAR(20)
+  created_at : TIMESTAMP
+}
+
+' 关系定义
+User ||--o{ Project
+Project ||--|| Requirement
+Project ||--o{ ChatSession
+User ||--o{ ChatSession
+ChatSession ||--o{ ChatMessage
+Requirement ||--o{ Question
+Project ||--o{ PUMLDiagram
+Project ||--o{ BusinessModule
+Project ||--o{ ModuleUsage
+CommonModule ||--o{ ModuleUsage
+BusinessModule ||--o{ ModuleUsage
+Project ||--o{ Document
+Project ||--o{ Code
+BusinessModule ||--o{ Code
+Project ||--|| ProjectConfig
+Project ||--o{ TestCase
+BusinessModule ||--o{ TestCase
+
+' 样式定义
+skinparam entity {
+  BackgroundColor lightblue
+  BorderColor darkblue
+  FontSize 11
+}
+
+' 核心实体高亮
+skinparam entity<<core>> {
+  BackgroundColor lightcoral
+  BorderColor darkred
+}
+
+note top of Project : 核心实体：项目是所有\n其他实体的根节点
+
+note top of CommonModule : 重要：通用模块库\n支持跨项目复用
+
+note right of BusinessModule : 核心：业务逻辑的\n最小可复用单元
+
+note bottom of ModuleUsage : 追踪模块使用情况\n支持使用分析和推荐
+
+@enduml 
