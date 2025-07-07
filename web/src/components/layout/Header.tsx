@@ -16,8 +16,8 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-3">
-      <div className="flex items-center justify-between">
+    <header className="main-header">
+      <div className="h-full px-4 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <h1 className="text-xl font-semibold text-gray-900">
             AI开发平台
@@ -36,7 +36,7 @@ const Header: React.FC = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate('/profile')}
+                  onClick={() => navigate('/settings')}
                 >
                   <Settings className="h-4 w-4" />
                 </Button>

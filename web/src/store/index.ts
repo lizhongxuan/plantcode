@@ -76,12 +76,22 @@ export const useProjectStore = create<ProjectState>((set) => ({
   currentProject: null,
   isLoading: false,
   error: null,
-  setProjects: (projects) => set({ projects }),
+  setProjects: (projects) => set({ projects: projects || [] }),
   setCurrentProject: (project) => set({ currentProject: project }),
   addProject: (project) =>
-    set((state) => ({
-      projects: [project, ...state.projects],
-    })),
+    set((state) => {
+      // 检查项目是否已存在，避免重复
+      const existingIndex = state.projects.findIndex(p => p.project_id === project.project_id);
+      if (existingIndex !== -1) {
+        // 如果存在，更新现有项目
+        const updatedProjects = [...state.projects];
+        updatedProjects[existingIndex] = project;
+        return { projects: updatedProjects };
+      } else {
+        // 如果不存在，添加到前面
+        return { projects: [project, ...state.projects] };
+      }
+    }),
   updateProject: (updatedProject) =>
     set((state) => ({
       projects: state.projects.map((p) =>

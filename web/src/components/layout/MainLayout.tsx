@@ -5,12 +5,16 @@ import Sidebar from './Sidebar';
 
 const MainLayout: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="main-layout">
       <Header />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-6">
-          <Outlet />
+      <div className="flex flex-1 h-[calc(100vh-4rem)]">
+        <aside className="flex-shrink-0">
+          <Sidebar />
+        </aside>
+        <main className="main-content">
+          <div className="p-6">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

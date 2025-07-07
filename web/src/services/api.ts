@@ -112,14 +112,14 @@ export const projectApi = {
   },
 
   // 获取项目列表
-  getProjects: async (page: number = 1, pageSize: number = 10): Promise<PaginatedResponse<Project>> => {
+  getProjects: async (page: number = 1, pageSize: number = 10): Promise<{ data: PaginatedResponse<Project> }> => {
     const response = await api.get<PaginatedResponse<Project>>('/projects/list', {
       params: { page, page_size: pageSize },
     });
     if (!response.data.success) {
       throw new Error(response.data.message || '获取项目列表失败');
     }
-    return response.data;
+    return response;
   },
 
   // 获取项目详情

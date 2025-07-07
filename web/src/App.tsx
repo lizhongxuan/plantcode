@@ -8,6 +8,11 @@ import Register from '@/pages/Register';
 import Dashboard from '@/pages/Dashboard';
 import ProjectList from '@/pages/ProjectList';
 import CreateProject from '@/pages/CreateProject';
+import EditProject from '@/pages/EditProject';
+import AIAnalysis from '@/pages/AIAnalysis';
+import Chat from '@/pages/Chat';
+import Settings from '@/pages/Settings';
+import ProjectDetail from '@/pages/ProjectDetail';
 
 const App: React.FC = () => {
   const { isAuthenticated } = useAuthStore();
@@ -42,12 +47,17 @@ const App: React.FC = () => {
         <Route path="projects" element={<ProjectList />} />
         <Route path="projects/new" element={<CreateProject />} />
         
-        {/* 占位路由 - 待后续实现 */}
-        <Route path="projects/:id" element={<div className="p-6 bg-white rounded-lg shadow">项目详情页面 - 开发中</div>} />
-        <Route path="projects/:id/edit" element={<div className="p-6 bg-white rounded-lg shadow">编辑项目页面 - 开发中</div>} />
-        <Route path="documents" element={<div className="p-6 bg-white rounded-lg shadow">文档管理页面 - 开发中</div>} />
-        <Route path="chat" element={<div className="p-6 bg-white rounded-lg shadow">AI对话页面 - 开发中</div>} />
-        <Route path="settings" element={<div className="p-6 bg-white rounded-lg shadow">设置页面 - 开发中</div>} />
+        {/* 项目功能路由 - 新的集成式项目详情页面 */}
+        <Route path="projects/:projectId" element={<ProjectDetail />} />
+        <Route path="projects/:projectId/edit" element={<EditProject />} />
+        
+        {/* 保留原有AI功能路由（向后兼容） */}
+        <Route path="project/:projectId/ai-analysis" element={<AIAnalysis />} />
+        <Route path="project/:projectId/chat" element={<Chat />} />
+        
+        {/* 通用功能路由 */}
+        <Route path="chat" element={<Chat />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<div className="p-6 bg-white rounded-lg shadow">个人资料页面 - 开发中</div>} />
       </Route>
       

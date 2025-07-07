@@ -59,13 +59,13 @@ type JWTConfig struct {
 
 // AIConfig AI服务配置
 type AIConfig struct {
-	Provider       string
-	OpenAIKey      string
-	ClaudeKey      string
-	Timeout        int
-	MaxRetries     int
-	DefaultModel   string
-	MaxTokens      int
+	Provider     string
+	OpenAIKey    string
+	ClaudeKey    string
+	Timeout      int
+	MaxRetries   int
+	DefaultModel string
+	MaxTokens    int
 }
 
 // CORSConfig CORS配置
@@ -86,8 +86,8 @@ func Load() *Config {
 			Host:            getEnv("DB_HOST", "localhost"),
 			Port:            getEnv("DB_PORT", "3306"),
 			User:            getEnv("DB_USER", "root"),
-			Password:        getEnv("DB_PASSWORD", "password"),
-			Name:            getEnv("DB_NAME", "ai_dev_platform"),
+			Password:        getEnv("DB_PASSWORD", ""),
+			Name:            getEnv("DB_NAME", "aicode"),
 			MaxConnections:  getEnvInt("DB_MAX_CONNECTIONS", 100),
 			MaxIdleConn:     getEnvInt("DB_MAX_IDLE", 10),
 			ConnMaxLifetime: getEnvInt("DB_CONN_MAX_LIFETIME", 3600),
@@ -168,12 +168,12 @@ func (c *Config) IsProduction() bool {
 
 // GetDSN 获取数据库连接字符串
 func (c *Config) GetDSN() string {
-	return c.Database.User + ":" + c.Database.Password + 
-		"@tcp(" + c.Database.Host + ":" + c.Database.Port + ")/" + 
+	return c.Database.User + ":" + c.Database.Password +
+		"@tcp(" + c.Database.Host + ":" + c.Database.Port + ")/" +
 		c.Database.Name + "?charset=utf8mb4&parseTime=True&loc=Local"
 }
 
 // GetRedisAddr 获取Redis地址
 func (c *Config) GetRedisAddr() string {
 	return c.Redis.Host + ":" + c.Redis.Port
-} 
+}

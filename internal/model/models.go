@@ -244,4 +244,124 @@ type SendMessageRequest struct {
 type AnswerQuestionRequest struct {
 	QuestionID uuid.UUID `json:"question_id" validate:"required"`
 	Answer     string    `json:"answer" validate:"required"`
+}
+
+// ===== 第二阶段新增模型和请求类型 =====
+
+// AIAnalysisRequest AI分析请求
+type AIAnalysisRequest struct {
+	ProjectID   uuid.UUID `json:"project_id" validate:"required"`
+	Requirement string    `json:"requirement" validate:"required,min=10"`
+	Provider    string    `json:"provider,omitempty"`
+}
+
+// GeneratePUMLRequest 生成PUML请求
+type GeneratePUMLRequest struct {
+	AnalysisID  string `json:"analysis_id" validate:"required"`
+	DiagramType string `json:"diagram_type" validate:"required"`
+	Provider    string `json:"provider,omitempty"`
+}
+
+// GenerateDocumentRequest 生成文档请求
+type GenerateDocumentRequest struct {
+	AnalysisID string `json:"analysis_id" validate:"required"`
+	Provider   string `json:"provider,omitempty"`
+}
+
+// ChatSessionCreateRequest 创建对话会话请求
+type ChatSessionCreateRequest struct {
+	ProjectID string `json:"project_id" validate:"required"`
+	Title     string `json:"title" validate:"required,min=1,max=100"`
+}
+
+// SendChatMessageRequest 发送聊天消息请求
+type SendChatMessageRequest struct {
+	SessionID string `json:"session_id" validate:"required"`
+	Content   string `json:"content" validate:"required"`
+	Role      string `json:"role" validate:"required"`
+}
+
+// UpdatePUMLRequest 更新PUML请求
+type UpdatePUMLRequest struct {
+	Title       string `json:"title,omitempty"`
+	Content     string `json:"content" validate:"required"`
+	Description string `json:"description,omitempty"`
+}
+
+// UpdateDocumentRequest 更新文档请求
+type UpdateDocumentRequest struct {
+	Title   string `json:"title,omitempty"`
+	Content string `json:"content" validate:"required"`
+}
+
+// 新增状态常量
+const (
+	// 对话会话状态
+	ChatSessionStatusActive    = "active"
+	ChatSessionStatusCompleted = "completed"
+	ChatSessionStatusArchived  = "archived"
+
+	// 消息角色
+	MessageRoleUser      = "user"
+	MessageRoleAssistant = "assistant"
+	MessageRoleSystem    = "system"
+
+	// 问题状态
+	QuestionStatusPending  = "pending"
+	QuestionStatusAnswered = "answered"
+	QuestionStatusSkipped  = "skipped"
+
+	// 问题分类
+	QuestionCategoryBusinessRule      = "business_rule"
+	QuestionCategoryExceptionHandling = "exception_handling"
+	QuestionCategoryDataStructure     = "data_structure"
+	QuestionCategoryExternalInterface = "external_interface"
+	QuestionCategoryPerformance       = "performance_requirement"
+	QuestionCategorySecurity          = "security_requirement"
+
+	// AI提供商
+	AIProviderOpenAI = "openai"
+	AIProviderClaude = "claude"
+)
+
+// ===== 用户AI配置相关模型 =====
+
+// UserAIConfig 用户AI配置
+type UserAIConfig struct {
+	ConfigID         uuid.UUID `json:"config_id" db:"config_id"`
+	UserID           uuid.UUID `json:"user_id" db:"user_id"`
+	Provider         string    `json:"provider" db:"provider"`
+	OpenAIAPIKey     string    `json:"openai_api_key,omitempty" db:"openai_api_key"`
+	ClaudeAPIKey     string    `json:"claude_api_key,omitempty" db:"claude_api_key"`
+	DefaultModel     string    `json:"default_model" db:"default_model"`
+	MaxTokens        int       `json:"max_tokens" db:"max_tokens"`
+	IsActive         bool      `json:"is_active" db:"is_active"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// UpdateUserAIConfigRequest 更新用户AI配置请求
+type UpdateUserAIConfigRequest struct {
+	Provider      string `json:"provider" validate:"required"`
+	OpenAIAPIKey  string `json:"openai_api_key,omitempty"`
+	ClaudeAPIKey  string `json:"claude_api_key,omitempty"`
+	DefaultModel  string `json:"default_model" validate:"required"`
+	MaxTokens     int    `json:"max_tokens" validate:"min=100,max=8192"`
+}
+
+// TestAIConnectionRequest 测试AI连接请求
+type TestAIConnectionRequest struct {
+	Provider string `json:"provider" validate:"required"`
+	APIKey   string `json:"api_key" validate:"required"`
+	Model    string `json:"model,omitempty"`
+}
+
+// AIConnectionTestResult AI连接测试结果
+type AIConnectionTestResult struct {
+	Success    bool   `json:"success"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model,omitempty"`
+	Message    string `json:"message"`
+	Latency    int64  `json:"latency"` // 毫秒
+	TokenUsage int    `json:"token_usage,omitempty"`
 } 

@@ -12,6 +12,10 @@ import (
 
 // CreateUser 创建用户
 func (r *MySQLRepository) CreateUser(user *model.User) error {
+	if r.db.MySQL == nil {
+		return fmt.Errorf("数据库连接不可用，请检查MySQL服务状态")
+	}
+
 	query := `
 		INSERT INTO users (user_id, username, email, password_hash, full_name, created_at, updated_at, status, preferences)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

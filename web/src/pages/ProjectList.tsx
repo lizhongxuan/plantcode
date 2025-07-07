@@ -18,12 +18,20 @@ const ProjectList: React.FC = () => {
     fetchProjects();
   }, [page]);
 
+  // 当组件挂载时强制刷新项目列表
+  useEffect(() => {
+    // 清除可能存在的错误状态
+    setError(null);
+    // 重置页面到第一页
+    setPage(1);
+  }, []);
+
   const fetchProjects = async () => {
     try {
       setLoading(true);
       const response = await projectApi.getProjects(page, 10);
-      setProjects(response.data);
-      setTotalPages(response.pagination.total_page);
+      setProjects(response.data.data);
+      setTotalPages(response.data.pagination.total_page);
     } catch (error) {
       setError(error instanceof Error ? error.message : '获取项目失败');
     } finally {
@@ -74,7 +82,7 @@ const ProjectList: React.FC = () => {
     }
   };
 
-  const filteredProjects = projects.filter(project => {
+  const filteredProjects = (projects || []).filter(project => {
     const matchesSearch = project.project_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          project.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || project.status === filterStatus;
@@ -130,6 +138,13 @@ const ProjectList: React.FC = () => {
 
       {/* 项目列表 */}
       <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900">项目列表</h3>
+            <p className="text-sm text-gray-500">点击项目行可进入详情页面使用AI功能</p>
+          </div>
+        </div>
+        
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -161,7 +176,11 @@ const ProjectList: React.FC = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredProjects.map((project) => (
-                  <tr key={project.project_id} className="hover:bg-gray-50">
+                  <tr 
+                    key={project.project_id} 
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/projects/${project.project_id}`)}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="p-2 bg-primary-100 rounded-lg">
@@ -206,22 +225,34 @@ const ProjectList: React.FC = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/projects/${project.project_id}`)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 阻止事件冒泡，避免触发行点击
+                            navigate(`/projects/${project.project_id}`);
+                          }}
+                          title="查看项目详情"
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/projects/${project.project_id}/edit`)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 阻止事件冒泡，避免触发行点击
+                            navigate(`/projects/${project.project_id}/edit`);
+                          }}
+                          title="编辑项目"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteProject(project.project_id)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // 阻止事件冒泡，避免触发行点击
+                            handleDeleteProject(project.project_id);
+                          }}
                           className="text-red-600 hover:text-red-700"
+                          title="删除项目"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

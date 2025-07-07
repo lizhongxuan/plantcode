@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"ai-dev-platform/internal/ai"
 	"ai-dev-platform/internal/api"
 	"ai-dev-platform/internal/config"
 	"ai-dev-platform/internal/repository"
@@ -42,13 +43,40 @@ func main() {
 	
 	// 初始化仓库
 	repo := repository.NewMySQLRepository(db)
+	aiRepo := repository.NewAIRepository(db.MySQL)
+	
+	// 初始化AI管理器
+	aiManagerConfig := ai.AIManagerConfig{
+		DefaultProvider: ai.ProviderOpenAI,
+		OpenAIConfig: &ai.OpenAIConfig{
+			APIKey:  cfg.AI.OpenAIKey,
+			BaseURL: os.Getenv("OPENAI_BASE_URL"),
+			Model:   cfg.AI.DefaultModel,
+		},
+		EnableCache: true,
+		CacheTTL:    time.Hour,
+	}
+	
+	aiManager, err := ai.NewAIManager(aiManagerConfig)
+	if err != nil {
+		log.Printf("AI管理器初始化失败，将以有限功能模式运行: %v", err)
+		// 创建一个空的AI管理器，确保服务不中断
+		aiManager, _ = ai.NewAIManager(ai.AIManagerConfig{
+			DefaultProvider: ai.ProviderOpenAI,
+			EnableCache:     false,
+		})
+	}
 	
 	// 初始化服务
 	userService := service.NewUserService(repo, cfg)
 	projectService := service.NewProjectService(repo)
+	aiService := service.NewAIService(aiManager, aiRepo, repo.(*repository.MySQLRepository))
+	
+	// 初始化PUML渲染服务
+	pumlService := service.NewPUMLService("")
 	
 	// 初始化路由器
-	router := api.NewRouter(cfg, userService, projectService)
+	router := api.NewRouter(cfg, userService, projectService, aiService, pumlService)
 	
 	// 创建HTTP服务器
 	server := &http.Server{

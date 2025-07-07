@@ -55,8 +55,8 @@ const CreateProject: React.FC = () => {
     
     try {
       const newProject = await projectApi.createProject(formData);
-      addProject(newProject);
-      navigate(`/projects/${newProject.project_id}`);
+      // 不立即添加到状态，让项目列表页面自己获取最新数据
+      navigate('/projects');
     } catch (error) {
       setApiError(error instanceof Error ? error.message : '创建项目失败');
     } finally {
