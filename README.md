@@ -1,86 +1,186 @@
-# AI辅助项目开发平台
+# AI开发平台
 
 ## 项目概述
 
-这是一个AI辅助的业务项目开发平台，旨在解决AI编程过程中用户需求描述不够精准的问题。通过PUML可视化建模作为中间产物，加强用户与AI的沟通效率。
+AI开发平台是一个智能的软件开发辅助工具，帮助开发者进行需求分析、系统设计、文档生成和开发指导。
 
-## 核心功能
+## 功能特性
 
-- **智能需求分析**：通过对话分析用户业务需求，识别缺失信息
-- **PUML图表生成**：自动生成业务流程图、系统架构图、数据模型图
-- **文档自动生成**：生成开发指导文档、测试用例、技术规范
-- **模块化管理**：业务逻辑切分为可复用模块，建立模块库
+### 核心功能
+- 🧠 **智能需求分析**：AI自动分析用户需求，提取核心功能和业务流程
+- 📊 **PUML图表生成**：自动生成系统架构图、流程图等技术文档
+- 📝 **分阶段文档生成**：按开发阶段自动生成规范化的技术文档
+- 💬 **项目上下文AI对话**：基于项目信息的智能AI助手
+- ⚙️ **用户自定义AI配置**：支持OpenAI、Claude、Gemini等多种AI提供商
 
-## 开发理念
-
-项目强调"先整理业务逻辑，再生成代码"的开发方式：
-
-1. **需求理解阶段**：通过AI对话深入理解业务需求
-2. **可视化建模阶段**：将需求转换为PUML图表
-3. **文档生成阶段**：生成详细的开发指导文档
-4. **模块化设计阶段**：切分业务模块，提取通用组件
-5. **代码生成阶段**：基于模块设计生成最终代码
-
-## 项目结构
-
-```
-plant_code/
-├── docs/                          # 文档目录
-│   └── requirements.md            # 项目需求文档
-├── development/                   # 开发文档
-├── design/                        # 设计文件
-│   ├── architecture.puml          # 系统架构图
-│   ├── business_flow.puml         # 业务流程图
-│   ├── data_model.puml            # 数据模型图
-│   └── interaction.puml           # 交互流程图
-├── project_files_checklist.md     # 文件开发清单
-└── README.md                      # 项目概览
-```
+### AI配置功能 ✨ **NEW**
+系统已升级支持用户个性化AI配置：
+- **多AI提供商支持**：OpenAI、Claude (Anthropic)、Gemini (Google)
+- **个人API密钥配置**：安全存储用户的API密钥
+- **模型选择**：支持不同AI模型的选择和配置
+- **全功能适配**：所有AI功能都使用用户的个人配置
 
 ## 技术栈
 
-- **后端**：Go + net/http标准库
-- **前端**：React + TypeScript
-- **数据库**：MySQL + Redis
-- **AI服务**：通过配置api-key使用第三方AI能力
-- **可视化**：PlantUML
+### 后端
+- **语言**：Go 1.23
+- **框架**：标准库 net/http
+- **数据库**：MySQL 8.0
+- **AI集成**：OpenAI API、Google Gemini API、Claude API
 
-## 开发阶段
+### 前端
+- **框架**：React 18 + TypeScript
+- **构建工具**：Vite
+- **UI组件**：Ant Design
+- **状态管理**：Zustand
+- **样式**：Tailwind CSS
 
-### 第一阶段（已完成）
-- [x] 项目需求分析
-- [x] 系统架构设计
-- [x] 业务流程设计
-- [x] 数据模型设计
-- [x] 交互流程设计
+## 快速开始
 
-### 第二阶段（进行中）
-- [ ] 技术规范文档
-- [ ] API接口设计
-- [ ] 数据库详细设计
+### 环境要求
+- Go 1.23+
+- Node.js 18+
+- MySQL 8.0+
 
-### 第三阶段（计划中）
-- [ ] 开发流程文档
-- [ ] 测试用例设计
-- [ ] 部署配置文档
+### 启动步骤
 
-## 查看PUML图表
+1. **启动后端服务**
+```bash
+go run cmd/server/main.go
+```
 
-推荐使用以下方式查看PUML图表：
+2. **启动前端服务**
+```bash
+cd web
+npm install
+npm run dev
+```
 
-1. **在线查看**：访问 [PlantUML在线编辑器](http://www.plantuml.com/plantuml/uml/)
-2. **VS Code插件**：安装PlantUML插件
-3. **本地渲染**：安装PlantUML本地环境
+3. **访问应用**
+- 前端地址：http://localhost:3000 (或自动分配的端口)
+- 后端API：http://localhost:8080
 
-## 贡献指南
+### AI配置指南
 
-本项目遵循以下开发原则：
+#### 设置个人AI配置
+1. 登录系统后，进入「设置」页面
+2. 选择「AI配置」选项卡
+3. 选择您偏好的AI提供商
+4. 输入对应的API密钥
+5. 选择默认模型和参数
+6. 保存配置
 
-- 使用中文进行沟通和文档编写
-- 严格按照用户需求执行，不随意扩展功能
-- 优先使用Go标准库，避免过度依赖第三方库
-- 保持代码简洁易懂，注重可维护性
+#### 支持的AI提供商
+
+| 提供商 | 支持模型 | 特点 |
+|--------|----------|------|
+| **OpenAI** | GPT-4, GPT-4 Turbo, GPT-3.5 Turbo | 强大的通用AI模型，适用于各种开发任务 |
+| **Claude** | Claude-3 Opus, Sonnet, Haiku | 专注于代码生成和分析的AI助手 |
+| **Gemini** | Gemini-2.5 Pro, 1.5 Pro, 1.5 Flash | Google的多模态AI模型，支持文本和图像处理 |
+
+#### 获取API密钥
+- **OpenAI**：访问 [OpenAI API Keys](https://platform.openai.com/api-keys)
+- **Claude**：访问 [Anthropic Console](https://console.anthropic.com/)
+- **Gemini**：访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
+
+## 主要功能说明
+
+### 1. 需求分析
+- 输入自然语言需求描述
+- AI自动提取核心功能、角色、业务流程
+- 生成结构化的需求文档
+- 识别缺失信息并生成补充问题
+
+### 2. PUML图表生成
+- 支持多种图表类型：序列图、类图、活动图、组件图等
+- 在线编辑器支持实时预览
+- 拖拽功能和语法验证
+- 版本管理和下载功能
+
+### 3. 分阶段文档生成
+- **阶段一**：需求梳理 - 项目需求文档、系统架构图、业务流程图
+- **阶段二**：技术设计 - 技术规范、API设计、数据库设计
+- **阶段三**：开发指导 - 开发流程、测试用例、部署文档
+
+### 4. AI助手对话
+- 基于项目上下文的智能对话
+- 支持文档生成、PUML编辑、需求分析等场景
+- 实时响应和动态操作建议
+
+## API文档
+
+### 主要API端点
+
+#### 认证相关
+- `POST /api/auth/register` - 用户注册
+- `POST /api/auth/login` - 用户登录
+
+#### AI功能
+- `POST /api/ai/chat` - 项目AI对话
+- `POST /api/ai/analyze` - 需求分析
+- `POST /api/ai/generate-stage-documents` - 分阶段文档生成
+
+#### AI配置
+- `GET /api/ai/config` - 获取用户AI配置
+- `PUT /api/ai/config` - 更新用户AI配置
+- `POST /api/ai/test-connection` - 测试AI连接
+
+#### PUML功能
+- `POST /api/puml/render` - 渲染PUML图片
+- `POST /api/puml/create` - 创建PUML图表
+- `GET /api/puml/project/{projectId}` - 获取项目PUML列表
+
+## 开发指南
+
+### 项目结构
+```
+plant_code/
+├── cmd/server/          # 服务器入口
+├── internal/
+│   ├── ai/             # AI服务集成
+│   ├── api/            # HTTP处理器
+│   ├── config/         # 配置管理
+│   ├── model/          # 数据模型
+│   ├── repository/     # 数据访问层
+│   ├── service/        # 业务逻辑层
+│   └── utils/          # 工具函数
+├── web/                # 前端代码
+│   ├── src/
+│   │   ├── components/ # React组件
+│   │   ├── pages/      # 页面组件
+│   │   ├── services/   # API服务
+│   │   └── types/      # TypeScript类型
+└── docs/               # 项目文档
+```
+
+### 贡献指南
+1. Fork 项目
+2. 创建功能分支
+3. 提交代码
+4. 创建 Pull Request
+
+## 更新日志
+
+### v1.2.0 (2025-01-08)
+- ✨ 新增用户个性化AI配置功能
+- 🔧 所有AI功能现在使用用户配置而非系统默认配置
+- 🐛 修复PUML预览和AI助手的错误
+- 📚 改进API文档和用户指南
+
+### v1.1.0
+- 分阶段文档生成功能
+- PUML在线编辑器
+- 项目上下文AI对话
+
+### v1.0.0
+- 基础需求分析功能
+- 用户认证系统
+- 项目管理功能
 
 ## 许可证
 
-MIT License 
+MIT License
+
+## 联系方式
+
+如有问题或建议，请提交 Issue 或联系开发团队。 

@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -30,6 +31,9 @@ func NewAIHandlers(aiService *service.AIService) *AIHandlers {
 // AnalyzeRequirement 分析业务需求
 // POST /api/ai/analyze
 func (h *AIHandlers) AnalyzeRequirement(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户（通过JWT认证中间件设置）
+	user := MustGetUserFromContext(r.Context())
+
 	var req model.AIAnalysisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求格式")
@@ -42,8 +46,8 @@ func (h *AIHandlers) AnalyzeRequirement(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// 调用服务层进行分析
-	analysis, err := h.aiService.AnalyzeRequirement(r.Context(), &req)
+	// 调用服务层进行分析，传递用户ID
+	analysis, err := h.aiService.AnalyzeRequirementWithUser(r.Context(), &req, user.UserID)
 	if err != nil {
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("需求分析失败: %v", err))
 		return
@@ -79,7 +83,8 @@ func (h *AIHandlers) GetRequirementAnalysis(w http.ResponseWriter, r *http.Reque
 // GetRequirementAnalysesByProject 获取项目的需求分析列表
 // GET /api/ai/analysis/project/{projectId}
 func (h *AIHandlers) GetRequirementAnalysesByProject(w http.ResponseWriter, r *http.Request) {
-	projectIDStr := r.PathValue("projectId")
+	// 从URL路径获取项目ID
+	projectIDStr := extractIDFromPath(r.URL.Path, "/api/ai/analysis/project/")
 	if projectIDStr == "" {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "缺少项目ID")
 		return
@@ -105,6 +110,9 @@ func (h *AIHandlers) GetRequirementAnalysesByProject(w http.ResponseWriter, r *h
 // GeneratePUML 生成PUML图表
 // POST /api/ai/puml/generate
 func (h *AIHandlers) GeneratePUML(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户信息
+	user := MustGetUserFromContext(r.Context())
+
 	var req model.GeneratePUMLRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求格式")
@@ -117,7 +125,8 @@ func (h *AIHandlers) GeneratePUML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	diagram, err := h.aiService.GeneratePUML(r.Context(), &req)
+	// 使用用户配置生成PUML图表
+	diagram, err := h.aiService.GeneratePUMLWithUser(r.Context(), &req, user.UserID)
 	if err != nil {
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("生成PUML图表失败: %v", err))
 		return
@@ -155,6 +164,9 @@ func (h *AIHandlers) GetPUMLDiagramsByProject(w http.ResponseWriter, r *http.Req
 // GenerateDocument 生成开发文档
 // POST /api/ai/document/generate
 func (h *AIHandlers) GenerateDocument(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户信息
+	user := MustGetUserFromContext(r.Context())
+
 	var req model.GenerateDocumentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求格式")
@@ -167,7 +179,8 @@ func (h *AIHandlers) GenerateDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	document, err := h.aiService.GenerateDocument(r.Context(), &req)
+	// 使用用户配置生成文档
+	document, err := h.aiService.GenerateDocumentWithUser(r.Context(), &req, user.UserID)
 	if err != nil {
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("生成开发文档失败: %v", err))
 		return
@@ -400,30 +413,58 @@ func (h *AIHandlers) UpdateDocument(w http.ResponseWriter, r *http.Request) {
 // GetUserAIConfig 获取用户AI配置
 // GET /api/ai/config
 func (h *AIHandlers) GetUserAIConfig(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户
 	user := MustGetUserFromContext(r.Context())
-	
+
+	// 获取用户AI配置
 	config, err := h.aiService.GetUserAIConfig(user.UserID)
 	if err != nil {
-		// 如果用户没有配置，返回默认配置
-		if strings.Contains(err.Error(), "not found") {
-			defaultConfig := &model.UserAIConfig{
-				Provider:     "openai",
-				DefaultModel: "gpt-4",
-				MaxTokens:    2048,
-				IsActive:     false,
-			}
-			utils.WriteSuccessResponse(w, defaultConfig, "获取默认AI配置")
-			return
+		// 如果没有配置，返回默认配置
+		config = &model.UserAIConfig{
+			Provider:     "openai",
+			DefaultModel: "gpt-4",
+			MaxTokens:    2048,
+			IsActive:     false,
 		}
-		utils.WriteErrorResponse(w, http.StatusInternalServerError, "获取AI配置失败")
-		return
 	}
 
-	// 隐藏API密钥信息
-	config.OpenAIAPIKey = ""
-	config.ClaudeAPIKey = ""
+	// 构建返回结果，包含API密钥的配置状态
+	response := map[string]interface{}{
+		"provider":      config.Provider,
+		"default_model": config.DefaultModel,
+		"max_tokens":    config.MaxTokens,
+		"is_active":     config.IsActive,
+		"created_at":    config.CreatedAt,
+		"updated_at":    config.UpdatedAt,
+		// API密钥状态（不返回实际密钥，只返回是否已配置）
+		"api_keys_configured": map[string]bool{
+			"openai": config.OpenAIAPIKey != "",
+			"claude": config.ClaudeAPIKey != "",
+			"gemini": config.GeminiAPIKey != "",
+		},
+		// 脱敏显示的API密钥（显示前4个字符和后4个字符）
+		"api_keys_display": map[string]string{
+			"openai": h.maskAPIKey(config.OpenAIAPIKey),
+			"claude": h.maskAPIKey(config.ClaudeAPIKey),
+			"gemini": h.maskAPIKey(config.GeminiAPIKey),
+		},
+	}
+
+	utils.WriteSuccessResponse(w, response, "获取AI配置成功")
+}
+
+// maskAPIKey 脱敏显示API密钥
+func (h *AIHandlers) maskAPIKey(apiKey string) string {
+	if apiKey == "" {
+		return ""
+	}
 	
-	utils.WriteSuccessResponse(w, config, "获取AI配置成功")
+	if len(apiKey) <= 8 {
+		return strings.Repeat("*", len(apiKey))
+	}
+	
+	// 显示前4个字符 + 星号 + 后4个字符
+	return apiKey[:4] + strings.Repeat("*", len(apiKey)-8) + apiKey[len(apiKey)-4:]
 }
 
 // UpdateUserAIConfig 更新用户AI配置
@@ -438,13 +479,13 @@ func (h *AIHandlers) UpdateUserAIConfig(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// 验证提供商
-	if req.Provider != "openai" && req.Provider != "claude" {
+	if req.Provider != "openai" && req.Provider != "claude" && req.Provider != "gemini" {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的AI提供商")
 		return
 	}
 
 	// 验证至少有一个API密钥
-	if req.OpenAIAPIKey == "" && req.ClaudeAPIKey == "" {
+	if req.OpenAIAPIKey == "" && req.ClaudeAPIKey == "" && req.GeminiAPIKey == "" {
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "至少需要配置一个AI提供商的API密钥")
 		return
 	}
@@ -458,6 +499,7 @@ func (h *AIHandlers) UpdateUserAIConfig(w http.ResponseWriter, r *http.Request) 
 	// 隐藏API密钥信息
 	config.OpenAIAPIKey = ""
 	config.ClaudeAPIKey = ""
+	config.GeminiAPIKey = ""
 	
 	utils.WriteSuccessResponse(w, config, "AI配置更新成功")
 }
@@ -514,6 +556,9 @@ func (h *AIHandlers) GetAvailableModels(w http.ResponseWriter, r *http.Request) 
 // ProjectChat 项目上下文AI对话
 // POST /api/ai/chat
 func (h *AIHandlers) ProjectChat(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户信息
+	user := MustGetUserFromContext(r.Context())
+
 	var req struct {
 		ProjectID string `json:"project_id" validate:"required"`
 		Message   string `json:"message" validate:"required"`
@@ -542,11 +587,95 @@ func (h *AIHandlers) ProjectChat(w http.ResponseWriter, r *http.Request) {
 		req.Context = "requirement_analysis"
 	}
 
-	response, err := h.aiService.ProjectChat(r.Context(), projectID, req.Message, req.Context)
+	// 调用服务方法，传递用户ID
+	response, err := h.aiService.ProjectChat(r.Context(), projectID, req.Message, req.Context, user.UserID)
 	if err != nil {
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("AI对话失败: %v", err))
 		return
 	}
 
 	utils.WriteSuccessResponse(w, response, "AI对话成功")
+}
+
+// GenerateStageDocuments 分阶段生成文档
+// POST /api/ai/generate-stage-documents
+func (h *AIHandlers) GenerateStageDocuments(w http.ResponseWriter, r *http.Request) {
+	var req model.GenerateStageDocumentsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求格式")
+		return
+	}
+
+	// 验证请求参数
+	if req.ProjectID == uuid.Nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "项目ID不能为空")
+		return
+	}
+
+	if req.Stage < 1 || req.Stage > 3 {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "阶段必须是1、2或3")
+		return
+	}
+
+	// 从上下文获取用户（通过JWT认证中间件设置）
+	user := MustGetUserFromContext(r.Context())
+
+	// 调用服务生成文档
+	result, err := h.aiService.GenerateStageDocuments(r.Context(), &req, user.UserID)
+	if err != nil {
+		log.Printf("生成阶段文档失败: %v", err)
+		utils.WriteErrorResponse(w, http.StatusInternalServerError, "生成文档失败: "+err.Error())
+		return
+	}
+
+	utils.WriteSuccessResponse(w, result, "分阶段文档生成成功")
+}
+
+// GenerateStageDocumentList 根据需求分析生成阶段文档列表
+// POST /api/ai/generate-document-list
+func (h *AIHandlers) GenerateStageDocumentList(w http.ResponseWriter, r *http.Request) {
+	user := MustGetUserFromContext(r.Context())
+
+	var req struct {
+		ProjectID string `json:"project_id" validate:"required"`
+		Stage     int    `json:"stage" validate:"required,min=1,max=3"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求格式")
+		return
+	}
+
+	// 验证请求
+	if req.ProjectID == "" {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "项目ID不能为空")
+		return
+	}
+
+	if req.Stage < 1 || req.Stage > 3 {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "阶段必须是1、2或3")
+		return
+	}
+
+	projectID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的项目ID")
+		return
+	}
+
+	// 创建阶段文档生成请求
+	stageReq := &model.GenerateStageDocumentsRequest{
+		ProjectID: projectID,
+		Stage:     req.Stage,
+	}
+
+	// 调用AI服务生成阶段文档
+	result, err := h.aiService.GenerateStageDocuments(r.Context(), stageReq, user.UserID)
+	if err != nil {
+		log.Printf("生成阶段文档列表失败: %v", err)
+		utils.WriteErrorResponse(w, http.StatusInternalServerError, "生成文档列表失败: "+err.Error())
+		return
+	}
+
+	utils.WriteSuccessResponse(w, result, "阶段文档列表生成成功")
 } 

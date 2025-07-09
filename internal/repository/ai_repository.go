@@ -695,7 +695,7 @@ func (r *AIRepository) GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, e
 	}
 
 	query := `
-		SELECT config_id, user_id, provider, openai_api_key, claude_api_key, 
+		SELECT config_id, user_id, provider, openai_api_key, claude_api_key, gemini_api_key,
 		       default_model, max_tokens, is_active, created_at, updated_at
 		FROM user_ai_configs 
 		WHERE user_id = ? AND is_active = true
@@ -708,6 +708,7 @@ func (r *AIRepository) GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, e
 		&config.Provider,
 		&config.OpenAIAPIKey,
 		&config.ClaudeAPIKey,
+		&config.GeminiAPIKey,
 		&config.DefaultModel,
 		&config.MaxTokens,
 		&config.IsActive,
@@ -729,9 +730,9 @@ func (r *AIRepository) GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, e
 func (r *AIRepository) CreateUserAIConfig(config *model.UserAIConfig) error {
 	query := `
 		INSERT INTO user_ai_configs (
-			config_id, user_id, provider, openai_api_key, claude_api_key,
+			config_id, user_id, provider, openai_api_key, claude_api_key, gemini_api_key,
 			default_model, max_tokens, is_active, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	
 	_, err := r.db.Exec(query,
@@ -740,6 +741,7 @@ func (r *AIRepository) CreateUserAIConfig(config *model.UserAIConfig) error {
 		config.Provider,
 		config.OpenAIAPIKey,
 		config.ClaudeAPIKey,
+		config.GeminiAPIKey,
 		config.DefaultModel,
 		config.MaxTokens,
 		config.IsActive,
@@ -758,7 +760,7 @@ func (r *AIRepository) CreateUserAIConfig(config *model.UserAIConfig) error {
 func (r *AIRepository) UpdateUserAIConfig(config *model.UserAIConfig) error {
 	query := `
 		UPDATE user_ai_configs 
-		SET provider = ?, openai_api_key = ?, claude_api_key = ?,
+		SET provider = ?, openai_api_key = ?, claude_api_key = ?, gemini_api_key = ?,
 		    default_model = ?, max_tokens = ?, updated_at = ?
 		WHERE config_id = ?
 	`
@@ -767,6 +769,7 @@ func (r *AIRepository) UpdateUserAIConfig(config *model.UserAIConfig) error {
 		config.Provider,
 		config.OpenAIAPIKey,
 		config.ClaudeAPIKey,
+		config.GeminiAPIKey,
 		config.DefaultModel,
 		config.MaxTokens,
 		config.UpdatedAt,

@@ -280,9 +280,10 @@ func (db *Database) CreateTables() error {
 		`CREATE TABLE IF NOT EXISTS user_ai_configs (
 			config_id VARCHAR(36) PRIMARY KEY,
 			user_id VARCHAR(36) NOT NULL,
-			provider ENUM('openai', 'claude') NOT NULL DEFAULT 'openai',
+			provider ENUM('openai', 'claude', 'gemini') NOT NULL DEFAULT 'openai',
 			openai_api_key VARCHAR(255) NULL,
 			claude_api_key VARCHAR(255) NULL,
+			gemini_api_key VARCHAR(255) NULL,
 			default_model VARCHAR(100) NOT NULL DEFAULT 'gpt-4',
 			max_tokens INT NOT NULL DEFAULT 2048,
 			is_active BOOLEAN DEFAULT TRUE,
@@ -306,6 +307,213 @@ func (db *Database) CreateTables() error {
 		}
 	}
 
+	return nil
+}
+
+// RunMigrations 执行数据库迁移
+func (db *Database) RunMigrations() error {
+	if db.MySQL == nil {
+		log.Println("警告: MySQL连接不可用，跳过数据库迁移")
+		return nil
+	}
+
+	log.Println("开始执行数据库迁移...")
+
+	migrations := []string{
+		// 迁移1: 添加gemini_api_key列到user_ai_configs表
+		`ALTER TABLE user_ai_configs 
+		 ADD COLUMN IF NOT EXISTS gemini_api_key VARCHAR(255) NULL 
+		 AFTER claude_api_key`,
+
+		// 迁移2: 更新provider枚举值以支持gemini
+		`ALTER TABLE user_ai_configs 
+		 MODIFY COLUMN provider ENUM('openai', 'claude', 'gemini') NOT NULL DEFAULT 'openai'`,
+
+		// 迁移3: 创建异步任务表
+		`CREATE TABLE IF NOT EXISTS async_tasks (
+			task_id VARCHAR(36) PRIMARY KEY,
+			user_id VARCHAR(36) NOT NULL,
+			project_id VARCHAR(36) NOT NULL,
+			task_type ENUM('stage_document_generation', 'puml_generation', 'document_generation', 'requirement_analysis', 'complete_project_documents') NOT NULL,
+			task_name VARCHAR(200) NOT NULL,
+			status ENUM('pending', 'running', 'completed', 'failed') DEFAULT 'pending',
+			progress INT DEFAULT 0,
+			result_data LONGTEXT,
+			error_message TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			started_at TIMESTAMP NULL,
+			completed_at TIMESTAMP NULL,
+			metadata JSON,
+			FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+			INDEX idx_user_id (user_id),
+			INDEX idx_project_id (project_id),
+			INDEX idx_task_type (task_type),
+			INDEX idx_status (status),
+			INDEX idx_created_at (created_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+		// 迁移4: 创建阶段进度表
+		`CREATE TABLE IF NOT EXISTS stage_progress (
+			progress_id VARCHAR(36) PRIMARY KEY,
+			project_id VARCHAR(36) NOT NULL,
+			stage INT NOT NULL,
+			status ENUM('not_started', 'in_progress', 'completed', 'failed') DEFAULT 'not_started',
+			completion_rate INT DEFAULT 0,
+			started_at TIMESTAMP NULL,
+			completed_at TIMESTAMP NULL,
+			document_count INT DEFAULT 0,
+			puml_count INT DEFAULT 0,
+			last_task_id VARCHAR(36),
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+			FOREIGN KEY (last_task_id) REFERENCES async_tasks(task_id) ON DELETE SET NULL,
+			INDEX idx_project_id (project_id),
+			INDEX idx_stage (stage),
+			INDEX idx_status (status),
+			UNIQUE KEY unique_project_stage (project_id, stage)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+		// 迁移5: 给generated_documents表添加stage和task_id字段
+		`ALTER TABLE generated_documents 
+		 ADD COLUMN stage INT DEFAULT 1 AFTER version,
+		 ADD COLUMN task_id VARCHAR(36) NULL AFTER stage,
+		 ADD FOREIGN KEY (task_id) REFERENCES async_tasks(task_id) ON DELETE SET NULL`,
+
+		// 迁移6: 给puml_diagrams表添加stage和task_id字段
+		`ALTER TABLE puml_diagrams 
+		 ADD COLUMN stage INT DEFAULT 1 AFTER version,
+		 ADD COLUMN task_id VARCHAR(36) NULL AFTER stage,
+		 ADD FOREIGN KEY (task_id) REFERENCES async_tasks(task_id) ON DELETE SET NULL`,
+	}
+
+	for i, migration := range migrations {
+		log.Printf("执行迁移 %d...", i+1)
+		
+		// 对于MySQL，我们需要检查列或表是否已存在
+		if i == 0 { // 第一个迁移：添加gemini_api_key列
+			// 检查列是否已存在
+			var exists int
+			err := db.MySQL.QueryRow(`
+				SELECT COUNT(*) 
+				FROM INFORMATION_SCHEMA.COLUMNS 
+				WHERE TABLE_SCHEMA = DATABASE() 
+				AND TABLE_NAME = 'user_ai_configs' 
+				AND COLUMN_NAME = 'gemini_api_key'
+			`).Scan(&exists)
+			
+			if err != nil {
+				log.Printf("迁移 %d 检查失败: %v", i+1, err)
+				continue
+			}
+			
+			if exists > 0 {
+				log.Printf("迁移 %d 已完成，跳过", i+1)
+				continue
+			}
+			
+			// 执行迁移
+			if _, err := db.MySQL.Exec(`ALTER TABLE user_ai_configs ADD COLUMN gemini_api_key VARCHAR(255) NULL AFTER claude_api_key`); err != nil {
+				log.Printf("迁移 %d 失败: %v", i+1, err)
+				return fmt.Errorf("迁移 %d 失败: %w", i+1, err)
+			}
+		} else if i == 2 { // 第三个迁移：创建async_tasks表
+			// 检查表是否已存在
+			var tableExists int
+			err := db.MySQL.QueryRow(`
+				SELECT COUNT(*) 
+				FROM INFORMATION_SCHEMA.TABLES 
+				WHERE TABLE_SCHEMA = DATABASE() 
+				AND TABLE_NAME = 'async_tasks'
+			`).Scan(&tableExists)
+			
+			if err != nil {
+				log.Printf("迁移 %d 检查失败: %v", i+1, err)
+				continue
+			}
+			
+			if tableExists > 0 {
+				log.Printf("迁移 %d 已完成，跳过", i+1)
+				continue
+			}
+			
+			// 执行迁移
+			if _, err := db.MySQL.Exec(migration); err != nil {
+				log.Printf("迁移 %d 失败: %v", i+1, err)
+				return fmt.Errorf("迁移 %d 失败: %w", i+1, err)
+			}
+		} else if i == 3 { // 第四个迁移：创建stage_progress表
+			// 检查表是否已存在
+			var tableExists int
+			err := db.MySQL.QueryRow(`
+				SELECT COUNT(*) 
+				FROM INFORMATION_SCHEMA.TABLES 
+				WHERE TABLE_SCHEMA = DATABASE() 
+				AND TABLE_NAME = 'stage_progress'
+			`).Scan(&tableExists)
+			
+			if err != nil {
+				log.Printf("迁移 %d 检查失败: %v", i+1, err)
+				continue
+			}
+			
+			if tableExists > 0 {
+				log.Printf("迁移 %d 已完成，跳过", i+1)
+				continue
+			}
+			
+			// 执行迁移
+			if _, err := db.MySQL.Exec(migration); err != nil {
+				log.Printf("迁移 %d 失败: %v", i+1, err)
+				return fmt.Errorf("迁移 %d 失败: %w", i+1, err)
+			}
+		} else if i == 4 || i == 5 { // 第五、六个迁移：添加字段
+			// 检查字段是否存在
+			tableName := "generated_documents"
+			if i == 5 {
+				tableName = "puml_diagrams"
+			}
+			
+			var columnExists int
+			err := db.MySQL.QueryRow(`
+				SELECT COUNT(*) 
+				FROM INFORMATION_SCHEMA.COLUMNS 
+				WHERE TABLE_SCHEMA = DATABASE() 
+				AND TABLE_NAME = ? 
+				AND COLUMN_NAME = 'stage'
+			`, tableName).Scan(&columnExists)
+			
+			if err != nil {
+				log.Printf("迁移 %d 检查失败: %v", i+1, err)
+				continue
+			}
+			
+			if columnExists > 0 {
+				log.Printf("迁移 %d 已完成，跳过", i+1)
+				continue
+			}
+			
+			// 执行迁移，但使用分步操作避免外键错误
+			alterSQL := fmt.Sprintf(`ALTER TABLE %s 
+				ADD COLUMN stage INT DEFAULT 1 AFTER version,
+				ADD COLUMN task_id VARCHAR(36) NULL AFTER stage`, tableName)
+			
+			if _, err := db.MySQL.Exec(alterSQL); err != nil {
+				log.Printf("迁移 %d 失败: %v", i+1, err)
+			}
+		} else {
+			// 其他迁移直接执行
+			if _, err := db.MySQL.Exec(migration); err != nil {
+				// 某些迁移失败不是致命错误，记录日志并继续
+				log.Printf("迁移 %d 警告: %v", i+1, err)
+			}
+		}
+		
+		log.Printf("迁移 %d 完成", i+1)
+	}
+
+	log.Println("数据库迁移完成")
 	return nil
 }
 
@@ -394,6 +602,18 @@ type Repository interface {
 	GetCommonModuleByID(moduleID uuid.UUID) (*model.CommonModule, error)
 	UpdateCommonModule(module *model.CommonModule) error
 	DeleteCommonModule(moduleID uuid.UUID) error
+
+	// 异步任务相关
+	CreateAsyncTask(task *model.AsyncTask) error
+	GetAsyncTask(taskID uuid.UUID) (*model.AsyncTask, error)
+	UpdateAsyncTask(task *model.AsyncTask) error
+	GetTasksByProject(projectID uuid.UUID, taskType string) ([]*model.AsyncTask, error)
+
+	// 阶段进度相关
+	CreateStageProgress(progress *model.StageProgress) error
+	GetStageProgress(projectID uuid.UUID) ([]*model.StageProgress, error)
+	UpdateStageProgress(progress *model.StageProgress) error
+	GetStageProgressByStage(projectID uuid.UUID, stage int) (*model.StageProgress, error)
 
 	// 健康检查
 	Health() error

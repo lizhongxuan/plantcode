@@ -41,6 +41,12 @@ func main() {
 		log.Println("数据表初始化完成")
 	}
 	
+	// 执行数据库迁移（所有环境）
+	if err := db.RunMigrations(); err != nil {
+		log.Printf("数据库迁移失败: %v", err)
+		// 迁移失败不是致命错误，继续启动服务
+	}
+	
 	// 初始化仓库
 	repo := repository.NewMySQLRepository(db)
 	aiRepo := repository.NewAIRepository(db.MySQL)
@@ -75,8 +81,11 @@ func main() {
 	// 初始化PUML渲染服务
 	pumlService := service.NewPUMLService("")
 	
+	// 初始化异步任务服务
+	asyncTaskService := service.NewAsyncTaskService(repo, aiService, aiManager)
+	
 	// 初始化路由器
-	router := api.NewRouter(cfg, userService, projectService, aiService, pumlService)
+	router := api.NewRouter(cfg, userService, projectService, aiService, pumlService, asyncTaskService)
 	
 	// 创建HTTP服务器
 	server := &http.Server{

@@ -11,6 +11,7 @@ type AIProvider string
 const (
 	ProviderOpenAI AIProvider = "openai"
 	ProviderClaude AIProvider = "claude"
+	ProviderGemini AIProvider = "gemini"
 )
 
 // AIClient 定义AI客户端的统一接口

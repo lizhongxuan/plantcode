@@ -1,37 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
-import api from '@/services/api';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import { Card, Input, Button, Progress, Space, Typography, Divider, Tag, List, message, Alert } from 'antd';
 import { 
-  Target, 
-  CheckCircle, 
-  Loader2, 
-  RefreshCw, 
-  Play, 
-  MessageCircle, 
-  Send, 
-  Bot, 
-  User,
-  Lightbulb,
-  FileText,
-  Users,
-  Workflow,
-  Database
-} from 'lucide-react';
-import type { Project } from '@/types';
+  SendOutlined, 
+  UserOutlined, 
+  RobotOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
+  BulbOutlined,
+  TeamOutlined,
+  PartitionOutlined,
+  DatabaseOutlined,
+  FileTextOutlined
+} from '@ant-design/icons';
+import { aiApi, asyncTaskApi } from '@/services/api';
+
+const { TextArea } = Input;
+const { Title, Text, Paragraph } = Typography;
 
 interface RequirementAnalysisProps {
   projectId: string;
-  project: Project;
-  onAnalysisComplete?: () => void;
+  onAnalysisUpdate?: () => void;
 }
 
+// 需求分析结果结构
 interface AnalysisResult {
   analysis_id: string;
   core_functions: string[];
   roles: string[];
-  business_processes: string[];
-  data_entities: string[];
+  business_processes: Array<{ name: string; steps: string[]; actors: string[]; description: string }>;
+  data_entities: Array<{ name: string; attributes: any[]; description: string }>;
   completeness_score: number;
   created_at: string;
 }
@@ -41,9 +38,13 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  analysisUpdate?: AnalysisResult; // 如果消息包含分析更新
 }
 
-const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, project, onAnalysisComplete }) => {
+const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ 
+  projectId, 
+  onAnalysisUpdate 
+}) => {
   const [step, setStep] = useState<'input' | 'analyzing' | 'interactive'>('input');
   const [requirement, setRequirement] = useState('');
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
@@ -55,6 +56,34 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
   const [currentMessage, setCurrentMessage] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // 转换后端数据为前端使用的格式
+  const transformAnalysisData = (rawData: any): AnalysisResult => {
+    let structuredData;
+    try {
+      structuredData = typeof rawData.structured_requirement === 'string' 
+        ? JSON.parse(rawData.structured_requirement)
+        : rawData.structured_requirement;
+    } catch (error) {
+      console.error('解析structured_requirement失败:', error);
+      structuredData = {
+        core_functions: [],
+        roles: [],
+        business_processes: [],
+        data_entities: []
+      };
+    }
+
+    return {
+      analysis_id: rawData.requirement_id || rawData.analysis_id,
+      core_functions: structuredData.core_functions || [],
+      roles: structuredData.roles || [],
+      business_processes: structuredData.business_processes || [],
+      data_entities: structuredData.data_entities || [],
+      completeness_score: rawData.completeness_score || 0,
+      created_at: rawData.created_at || new Date().toISOString()
+    };
+  };
 
   // 加载现有分析结果
   useEffect(() => {
@@ -70,19 +99,20 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
 
   const loadExistingAnalysis = async () => {
     try {
-      const response = await api.get(`/ai/analysis/project/${projectId}`);
-      if (response.data.success && response.data.data.length > 0) {
-        const latestAnalysis = response.data.data[0];
-        setAnalysisResult(latestAnalysis);
+      setIsLoading(true);
+      const response = await aiApi.getProjectAnalysis(projectId);
+      if (response.success && response.data.length > 0) {
+        const latestAnalysis = response.data[0];
+        setAnalysisResult(transformAnalysisData(latestAnalysis));
         setStep('interactive');
-        if (onAnalysisComplete) {
-          onAnalysisComplete();
-        }
         // 初始化对话
         initializeChat();
       }
     } catch (err) {
       // 没有现有分析，保持输入状态
+      console.log('无现有分析结果，等待用户输入');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -90,7 +120,7 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
     const welcomeMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'assistant',
-      content: '您好！我是您的AI助手。您的项目需求分析已完成，我可以帮您进一步优化需求分析、回答相关问题或者协助您完善项目细节。请告诉我您想了解什么？',
+      content: '您好！我是您的AI需求分析助手。我已经完成了初步的需求分析。您可以：\n\n1. 询问我关于项目的任何细节问题\n2. 要求我补充或修改需求分析\n3. 让我解释某个业务流程或数据实体\n\n请告诉我您想了解或改进什么？',
       timestamp: new Date().toISOString()
     };
     setChatMessages([welcomeMessage]);
@@ -107,25 +137,20 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
       setError('');
       setStep('analyzing');
 
-      const response = await api.post('/ai/analyze', {
-        project_id: projectId,
-        requirement: requirement
-      });
+      const response = await aiApi.analyzeRequirement(projectId, requirement);
 
-      if (response.data.success) {
-        setAnalysisResult(response.data.data);
+      if (response.success) {
+        setAnalysisResult(transformAnalysisData(response.data));
         setStep('interactive');
-        if (onAnalysisComplete) {
-          onAnalysisComplete();
-        }
+        onAnalysisUpdate?.();
         // 初始化对话
         initializeChat();
       } else {
-        setError(response.data.error || '分析失败');
-        setStep('input');
+        throw new Error(response.message || '分析失败');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || '分析失败');
+      console.error('需求分析失败:', err);
+      setError(err.message || '需求分析失败，请稍后重试');
       setStep('input');
     } finally {
       setIsLoading(false);
@@ -133,7 +158,7 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
   };
 
   const handleChatMessage = async () => {
-    if (!currentMessage.trim() || isChatLoading) return;
+    if (!currentMessage.trim()) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -147,32 +172,34 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
     setIsChatLoading(true);
 
     try {
-      // 这里调用项目上下文的AI对话API
-      const response = await api.post('/ai/chat', {
-        project_id: projectId,
-        message: currentMessage,
-        context: 'requirement_analysis'
-      });
-
-      if (response.data.success) {
-        const assistantMessage: ChatMessage = {
+      // 使用项目上下文AI对话
+      const response = await aiApi.projectChat(projectId, currentMessage, 'requirement_analysis');
+      
+      if (response.success) {
+        const aiMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: response.data.data.message,
+          content: response.data.response,
           timestamp: new Date().toISOString()
         };
-        setChatMessages(prev => [...prev, assistantMessage]);
 
-        // 如果AI返回了更新的分析结果，更新分析数据
-        if (response.data.data.updated_analysis) {
-          setAnalysisResult(response.data.data.updated_analysis);
+        // 检查是否包含分析更新
+        if (response.data.analysis_update) {
+          aiMessage.analysisUpdate = transformAnalysisData(response.data.analysis_update);
+          setAnalysisResult(aiMessage.analysisUpdate);
+          onAnalysisUpdate?.();
         }
+
+        setChatMessages(prev => [...prev, aiMessage]);
+      } else {
+        throw new Error(response.message || '对话失败');
       }
     } catch (err: any) {
+      console.error('AI对话失败:', err);
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '抱歉，我遇到了一些问题。请稍后再试。',
+        content: `抱歉，我遇到了一些问题：${err.message || '请稍后重试'}`,
         timestamp: new Date().toISOString()
       };
       setChatMessages(prev => [...prev, errorMessage]);
@@ -182,298 +209,286 @@ const RequirementAnalysis: React.FC<RequirementAnalysisProps> = ({ projectId, pr
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score >= 0.8) return '#52c41a';
+    if (score >= 0.6) return '#faad14';
+    return '#ff4d4f';
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && e.ctrlKey) {
       e.preventDefault();
-      handleChatMessage();
+      if (step === 'input') {
+        handleInitialAnalysis();
+      } else {
+        handleChatMessage();
+      }
     }
   };
 
-  // 初始输入阶段
-  if (step === 'input') {
-    return (
-      <div className="p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <Target className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-              智能需求分析
-            </h2>
-            <p className="text-gray-600">
-              详细描述 <strong>{project.project_name}</strong> 的功能需求，AI将帮您生成结构化的需求文档，并可通过对话进一步优化
-            </p>
-          </div>
+  // 渲染分析结果
+  const renderAnalysisResult = () => {
+    if (!analysisResult) return null;
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              项目需求描述 <span className="text-red-500">*</span>
-            </label>
-            <textarea
+    return (
+      <Space direction="vertical" style={{ width: '100%' }} size="large">
+        {/* 完整度评分 */}
+        <Card size="small" title="需求完整度评估">
+          <Progress
+            percent={analysisResult.completeness_score * 100}
+            strokeColor={getScoreColor(analysisResult.completeness_score)}
+            format={percent => `${percent}%`}
+          />
+          <Text type="secondary" style={{ marginTop: 8, display: 'block' }}>
+            当前需求分析完整度为 {(analysisResult.completeness_score * 100).toFixed(1)}%
+          </Text>
+        </Card>
+
+        {/* 核心功能 */}
+        {analysisResult.core_functions.length > 0 && (
+          <Card size="small" title={<><BulbOutlined /> 核心功能</>}>
+            <Space wrap>
+              {analysisResult.core_functions.map((func, index) => (
+                <Tag key={index} color="blue">{func}</Tag>
+              ))}
+            </Space>
+          </Card>
+        )}
+
+        {/* 用户角色 */}
+        {analysisResult.roles.length > 0 && (
+          <Card size="small" title={<><TeamOutlined /> 用户角色</>}>
+            <Space wrap>
+              {analysisResult.roles.map((role, index) => (
+                <Tag key={index} color="green">{role}</Tag>
+              ))}
+            </Space>
+          </Card>
+        )}
+
+        {/* 业务流程 */}
+        {analysisResult.business_processes.length > 0 && (
+          <Card size="small" title={<><PartitionOutlined /> 业务流程</>}>
+            <List
+              size="small"
+              dataSource={analysisResult.business_processes}
+              renderItem={(process) => (
+                <List.Item>
+                  <div style={{ width: '100%' }}>
+                    <Title level={5}>{process.name}</Title>
+                    <Paragraph style={{ margin: 0 }}>
+                      <Text type="secondary">{process.description}</Text>
+                    </Paragraph>
+                    {process.actors && process.actors.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        <Text strong>参与者：</Text>
+                        <Space wrap>
+                          {process.actors.map((actor, index) => (
+                            <Tag key={index} size="small">{actor}</Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    )}
+                  </div>
+                </List.Item>
+              )}
+            />
+          </Card>
+        )}
+
+        {/* 数据实体 */}
+        {analysisResult.data_entities.length > 0 && (
+          <Card size="small" title={<><DatabaseOutlined /> 数据实体</>}>
+            <List
+              size="small"
+              dataSource={analysisResult.data_entities}
+              renderItem={(entity) => (
+                <List.Item>
+                  <div style={{ width: '100%' }}>
+                    <Title level={5}>{entity.name}</Title>
+                    <Paragraph style={{ margin: 0 }}>
+                      <Text type="secondary">{entity.description}</Text>
+                    </Paragraph>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </Card>
+        )}
+      </Space>
+    );
+  };
+
+  // 渲染对话界面
+  const renderChatInterface = () => (
+    <Card title="AI需求助手对话" size="small">
+      <div
+        ref={chatContainerRef}
+        style={{
+          height: '400px',
+          overflowY: 'auto',
+          border: '1px solid #f0f0f0',
+          borderRadius: '6px',
+          padding: '12px',
+          marginBottom: '12px',
+          backgroundColor: '#fafafa'
+        }}
+      >
+        {chatMessages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: 'flex',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+              marginBottom: '12px'
+            }}
+          >
+            <div
+              style={{
+                maxWidth: '80%',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                backgroundColor: msg.role === 'user' ? '#1890ff' : '#fff',
+                color: msg.role === 'user' ? '#fff' : '#000',
+                border: msg.role === 'assistant' ? '1px solid #d9d9d9' : 'none',
+                position: 'relative'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                {msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
+                <Text
+                  style={{
+                    fontSize: '12px',
+                    marginLeft: '6px',
+                    color: msg.role === 'user' ? 'rgba(255,255,255,0.8)' : '#999'
+                  }}
+                >
+                  {msg.role === 'user' ? '您' : 'AI助手'}
+                </Text>
+              </div>
+              <div style={{ whiteSpace: 'pre-line' }}>{msg.content}</div>
+              
+              {/* 如果消息包含分析更新，显示提示 */}
+              {msg.analysisUpdate && (
+                <Alert
+                  message="需求分析已更新"
+                  type="success"
+                  size="small"
+                  style={{ marginTop: '8px' }}
+                  showIcon
+                />
+              )}
+            </div>
+          </div>
+        ))}
+        
+        {isChatLoading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                backgroundColor: '#fff',
+                border: '1px solid #d9d9d9'
+              }}
+            >
+              <LoadingOutlined /> AI正在思考...
+            </div>
+          </div>
+        )}
+      </div>
+
+      <Space.Compact style={{ width: '100%' }}>
+        <TextArea
+          value={currentMessage}
+          onChange={(e) => setCurrentMessage(e.target.value)}
+          onKeyDown={handleKeyPress}
+          placeholder="输入您的问题或要求..."
+          autoSize={{ minRows: 1, maxRows: 3 }}
+          disabled={isChatLoading}
+        />
+        <Button
+          type="primary"
+          icon={<SendOutlined />}
+          onClick={handleChatMessage}
+          disabled={isChatLoading || !currentMessage.trim()}
+        >
+          发送
+        </Button>
+      </Space.Compact>
+      
+      <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: '8px' }}>
+        提示：按 Ctrl+Enter 快速发送消息
+      </Text>
+    </Card>
+  );
+
+  if (isLoading && step === 'input') {
+    return (
+      <div style={{ textAlign: 'center', padding: '50px' }}>
+        <LoadingOutlined style={{ fontSize: '24px' }} />
+        <div style={{ marginTop: '16px' }}>正在加载需求分析...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {step === 'input' && (
+        <Card title="需求输入" size="small">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <TextArea
               value={requirement}
               onChange={(e) => setRequirement(e.target.value)}
-              placeholder={`请详细描述 ${project.project_name} 的功能需求，例如：
-• 主要功能模块
-• 用户角色和权限
-• 业务流程
-• 数据管理需求
-• 技术要求等...`}
-              className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-            />
-            <div className="flex justify-between items-center mt-4">
-              <p className="text-sm text-gray-500">
-                建议输入200字以上的详细描述，分析完成后可通过AI对话进一步优化
-              </p>
-              <span className="text-sm text-gray-500">
-                {requirement.length} 字符
-              </span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-600 text-sm">{error}</p>
-            </div>
-          )}
-
-          <div className="mt-6 flex justify-center">
-            <Button
-              onClick={handleInitialAnalysis}
+              onKeyDown={handleKeyPress}
+              placeholder="请详细描述您的项目需求..."
+              rows={6}
               disabled={isLoading}
-              className="px-8 py-3"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  分析中...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  开始AI分析
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 分析中阶段
-  if (step === 'analyzing') {
-    return (
-      <div className="p-6">
-        <div className="max-w-2xl mx-auto text-center">
-          <Loader2 className="h-16 w-16 text-blue-600 animate-spin mx-auto mb-6" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">AI正在分析您的需求...</h2>
-          <p className="text-gray-600 mb-6">这可能需要几十秒的时间，分析完成后您可以通过AI对话进一步优化需求</p>
-        </div>
-      </div>
-    );
-  }
-
-  // 交互式分析阶段
-  if (step === 'interactive' && analysisResult) {
-    return (
-      <div className="h-[800px] flex">
-        {/* 左侧 - 需求分析结果 */}
-        <div className="w-1/2 p-6 overflow-y-auto border-r border-gray-200">
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">需求分析结果</h3>
-                  <p className="text-sm text-gray-600">
-                    {new Date(analysisResult.created_at).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              <div className="px-3 py-1 rounded-lg bg-blue-50 border border-blue-200">
-                <span className="text-sm font-medium text-gray-600">完整度</span>
-                <span className={`ml-2 text-sm font-bold ${getScoreColor(analysisResult.completeness_score)}`}>
-                  {analysisResult.completeness_score}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            {/* 核心功能 */}
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="flex items-center mb-3">
-                <Lightbulb className="h-5 w-5 text-blue-600 mr-2" />
-                <h4 className="font-medium text-gray-900">核心功能</h4>
-              </div>
-              <ul className="space-y-2">
-                {analysisResult.core_functions.map((func, index) => (
-                  <li key={index} className="flex items-start">
-                    <span className="block w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                    <span className="text-sm text-gray-700">{func}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* 用户角色 */}
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="flex items-center mb-3">
-                <Users className="h-5 w-5 text-green-600 mr-2" />
-                <h4 className="font-medium text-gray-900">用户角色</h4>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {analysisResult.roles.map((role, index) => (
-                  <span key={index} className="px-3 py-1 bg-green-100 text-green-800 text-sm rounded-full">
-                    {role}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* 业务流程 */}
-            <div className="bg-purple-50 rounded-lg p-4">
-              <div className="flex items-center mb-3">
-                <Workflow className="h-5 w-5 text-purple-600 mr-2" />
-                <h4 className="font-medium text-gray-900">业务流程</h4>
-              </div>
-              <ul className="space-y-2">
-                {analysisResult.business_processes.map((process, index) => (
-                  <li key={index} className="flex items-start">
-                    <span className="block w-2 h-2 bg-purple-500 rounded-full mt-2 mr-3 flex-shrink-0"></span>
-                    <span className="text-sm text-gray-700">{process}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* 数据实体 */}
-            <div className="bg-orange-50 rounded-lg p-4">
-              <div className="flex items-center mb-3">
-                <Database className="h-5 w-5 text-orange-600 mr-2" />
-                <h4 className="font-medium text-gray-900">数据实体</h4>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {analysisResult.data_entities.map((entity, index) => (
-                  <span key={index} className="px-3 py-1 bg-orange-100 text-orange-800 text-sm rounded-full">
-                    {entity}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-gray-200">
+            />
+            
+            {error && (
+              <Alert message={error} type="error" showIcon />
+            )}
+            
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setStep('input');
-                setRequirement('');
-                setAnalysisResult(null);
-                setChatMessages([]);
-              }}
-              className="w-full"
+              type="primary"
+              onClick={handleInitialAnalysis}
+              loading={isLoading}
+              disabled={!requirement.trim()}
+              block
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              重新分析
+              开始智能分析
             </Button>
-          </div>
-        </div>
+            
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              提示：按 Ctrl+Enter 快速开始分析
+            </Text>
+          </Space>
+        </Card>
+      )}
 
-        {/* 右侧 - AI对话 */}
-        <div className="w-1/2 flex flex-col">
-          {/* 对话头部 */}
-          <div className="p-4 border-b border-gray-200 bg-gray-50">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-full">
-                <Bot className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-gray-900">AI需求分析助手</h3>
-                <p className="text-sm text-gray-600">优化需求分析，完善项目细节</p>
-              </div>
+      {step === 'analyzing' && (
+        <Card title="正在分析" size="small">
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <LoadingOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+            <div style={{ marginTop: '16px', fontSize: '16px' }}>
+              AI正在分析您的需求...
             </div>
+            <Text type="secondary">
+              这可能需要几秒钟时间，请耐心等待
+            </Text>
           </div>
+        </Card>
+      )}
 
-          {/* 对话内容 */}
-          <div className="flex-1 p-4 overflow-y-auto" ref={chatContainerRef}>
-            <div className="space-y-4">
-              {chatMessages.map((message) => (
-                <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`flex items-start space-x-2 max-w-[80%] ${message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                    <div className={`p-2 rounded-full ${message.role === 'user' ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                      {message.role === 'user' ? (
-                        <User className="h-4 w-4 text-blue-600" />
-                      ) : (
-                        <Bot className="h-4 w-4 text-gray-600" />
-                      )}
-                    </div>
-                    <div className={`p-3 rounded-lg ${
-                      message.role === 'user' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-100 text-gray-900'
-                    }`}>
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
-                        {new Date(message.timestamp).toLocaleTimeString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {isChatLoading && (
-                <div className="flex justify-start">
-                  <div className="flex items-start space-x-2">
-                    <div className="p-2 bg-gray-100 rounded-full">
-                      <Bot className="h-4 w-4 text-gray-600" />
-                    </div>
-                    <div className="p-3 bg-gray-100 rounded-lg">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 对话输入 */}
-          <div className="p-4 border-t border-gray-200 bg-gray-50">
-            <div className="flex space-x-2">
-              <Input
-                value={currentMessage}
-                onChange={(e) => setCurrentMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="询问AI助手，例如：'这个功能还需要考虑什么？'、'用户权限如何设计？'"
-                disabled={isChatLoading}
-                className="flex-1"
-              />
-              <Button
-                onClick={handleChatMessage}
-                disabled={isChatLoading || !currentMessage.trim()}
-                size="sm"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              💡 通过对话可以优化需求分析，完善项目细节，并自动更新PUML图表和技术文档
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return null;
+      {step === 'interactive' && (
+        <Space direction="vertical" style={{ width: '100%' }} size="large">
+          {renderAnalysisResult()}
+          <Divider />
+          {renderChatInterface()}
+        </Space>
+      )}
+    </div>
+  );
 };
 
-export default RequirementAnalysis; 
+export default RequirementAnalysis;

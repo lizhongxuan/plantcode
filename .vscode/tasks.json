@@ -1,0 +1,189 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "运行所有测试",
+            "type": "shell",
+            "command": "./scripts/test.sh",
+            "args": ["all"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "运行单元测试",
+            "type": "shell",
+            "command": "./scripts/test.sh",
+            "args": ["unit"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "运行集成测试",
+            "type": "shell",
+            "command": "./scripts/test.sh",
+            "args": ["integration"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "静态代码分析",
+            "type": "shell",
+            "command": "./scripts/test.sh",
+            "args": ["static"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "模块依赖分析",
+            "type": "shell",
+            "command": "./scripts/module_manager.sh",
+            "args": ["graph"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "回归测试",
+            "type": "shell",
+            "command": "./scripts/module_manager.sh",
+            "args": ["regression"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "启动开发服务器",
+            "type": "shell",
+            "command": "go",
+            "args": ["run", "cmd/server/main.go"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ],
+            "isBackground": true
+        },
+        {
+            "label": "构建项目",
+            "type": "shell",
+            "command": "go",
+            "args": ["build", "-o", "bin/server", "cmd/server/main.go"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "清理测试环境",
+            "type": "shell",
+            "command": "./scripts/test.sh",
+            "args": ["clean"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "分析模块复杂度 - API",
+            "type": "shell",
+            "command": "./scripts/module_manager.sh",
+            "args": ["analyze", "api"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "分析模块复杂度 - Service",
+            "type": "shell",
+            "command": "./scripts/module_manager.sh",
+            "args": ["analyze", "service"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "分析模块复杂度 - Repository",
+            "type": "shell",
+            "command": "./scripts/module_manager.sh",
+            "args": ["analyze", "repository"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+} 

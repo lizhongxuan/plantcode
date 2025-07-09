@@ -86,7 +86,7 @@ func Load() *Config {
 			Host:            getEnv("DB_HOST", "localhost"),
 			Port:            getEnv("DB_PORT", "3306"),
 			User:            getEnv("DB_USER", "root"),
-			Password:        getEnv("DB_PASSWORD", ""),
+			Password:        getEnv("DB_PASSWORD", "lzx234258"),
 			Name:            getEnv("DB_NAME", "aicode"),
 			MaxConnections:  getEnvInt("DB_MAX_CONNECTIONS", 100),
 			MaxIdleConn:     getEnvInt("DB_MAX_IDLE", 10),

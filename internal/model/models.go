@@ -93,6 +93,8 @@ type PUMLDiagram struct {
 	PUMLContent        string    `json:"puml_content" db:"puml_content"`
 	RenderedURL        string    `json:"rendered_url" db:"rendered_url"`
 	Version            int       `json:"version" db:"version"`
+	Stage              int       `json:"stage" db:"stage"`         // 新增：所属阶段 1,2,3
+	TaskID             *uuid.UUID `json:"task_id,omitempty" db:"task_id"` // 新增：关联的异步任务ID
 	IsValidated        bool      `json:"is_validated" db:"is_validated"`
 	ValidationFeedback string    `json:"validation_feedback" db:"validation_feedback"`
 	CreatedAt          time.Time `json:"created_at" db:"created_at"`
@@ -143,6 +145,8 @@ type Document struct {
 	Format       string    `json:"format" db:"format"`
 	FilePath     string    `json:"file_path" db:"file_path"`
 	Version      int       `json:"version" db:"version"`
+	Stage        int       `json:"stage" db:"stage"`         // 新增：所属阶段 1,2,3
+	TaskID       *uuid.UUID `json:"task_id,omitempty" db:"task_id"` // 新增：关联的异步任务ID
 	GeneratedAt  time.Time `json:"generated_at" db:"generated_at"`
 	IsFinal      bool      `json:"is_final" db:"is_final"`
 }
@@ -322,6 +326,7 @@ const (
 	// AI提供商
 	AIProviderOpenAI = "openai"
 	AIProviderClaude = "claude"
+	AIProviderGemini = "gemini"
 )
 
 // ===== 用户AI配置相关模型 =====
@@ -333,6 +338,7 @@ type UserAIConfig struct {
 	Provider         string    `json:"provider" db:"provider"`
 	OpenAIAPIKey     string    `json:"openai_api_key,omitempty" db:"openai_api_key"`
 	ClaudeAPIKey     string    `json:"claude_api_key,omitempty" db:"claude_api_key"`
+	GeminiAPIKey     string    `json:"gemini_api_key,omitempty" db:"gemini_api_key"`
 	DefaultModel     string    `json:"default_model" db:"default_model"`
 	MaxTokens        int       `json:"max_tokens" db:"max_tokens"`
 	IsActive         bool      `json:"is_active" db:"is_active"`
@@ -345,6 +351,7 @@ type UpdateUserAIConfigRequest struct {
 	Provider      string `json:"provider" validate:"required"`
 	OpenAIAPIKey  string `json:"openai_api_key,omitempty"`
 	ClaudeAPIKey  string `json:"claude_api_key,omitempty"`
+	GeminiAPIKey  string `json:"gemini_api_key,omitempty"`
 	DefaultModel  string `json:"default_model" validate:"required"`
 	MaxTokens     int    `json:"max_tokens" validate:"min=100,max=8192"`
 }
@@ -364,4 +371,122 @@ type AIConnectionTestResult struct {
 	Message    string `json:"message"`
 	Latency    int64  `json:"latency"` // 毫秒
 	TokenUsage int    `json:"token_usage,omitempty"`
-} 
+}
+
+// ===== 分阶段文档生成相关模型 =====
+
+// GenerateStageDocumentsRequest 分阶段文档生成请求
+type GenerateStageDocumentsRequest struct {
+	ProjectID uuid.UUID `json:"project_id" validate:"required"`
+	Stage     int       `json:"stage" validate:"required,min=1,max=3"`
+}
+
+// StageDocumentsResult 分阶段文档生成结果
+type StageDocumentsResult struct {
+	ProjectID     uuid.UUID      `json:"project_id"`
+	Stage         int            `json:"stage"`
+	GeneratedAt   time.Time      `json:"generated_at"`
+	Documents     []*Document    `json:"documents"`
+	PUMLDiagrams  []*PUMLDiagram `json:"puml_diagrams"`
+}
+
+// CompleteProjectDocumentsResult 完整项目文档生成结果
+type CompleteProjectDocumentsResult struct {
+	ProjectID         uuid.UUID             `json:"project_id"`
+	GeneratedAt       time.Time             `json:"generated_at"`
+	Stage1            *StageDocumentsResult `json:"stage1"`
+	Stage2            *StageDocumentsResult `json:"stage2"`
+	Stage3            *StageDocumentsResult `json:"stage3"`
+	TotalDocuments    int                   `json:"total_documents"`
+	TotalPUMLDiagrams int                   `json:"total_puml_diagrams"`
+}
+
+// ===== 新增异步任务管理模型 =====
+
+// AsyncTask 异步任务表
+type AsyncTask struct {
+	TaskID      uuid.UUID  `json:"task_id" db:"task_id"`
+	UserID      uuid.UUID  `json:"user_id" db:"user_id"`
+	ProjectID   uuid.UUID  `json:"project_id" db:"project_id"`
+	TaskType    string     `json:"task_type" db:"task_type"` // stage_document_generation, puml_generation, document_generation
+	TaskName    string     `json:"task_name" db:"task_name"`
+	Status      string     `json:"status" db:"status"`       // pending, running, completed, failed
+	Progress    int        `json:"progress" db:"progress"`   // 0-100
+	ResultData  string     `json:"result_data,omitempty" db:"result_data"` // JSON格式的结果数据
+	ErrorMessage string    `json:"error_message,omitempty" db:"error_message"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	StartedAt   *time.Time `json:"started_at,omitempty" db:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	Metadata    string     `json:"metadata,omitempty" db:"metadata"` // JSON格式的任务元数据
+}
+
+// StageProgress 阶段进度跟踪
+type StageProgress struct {
+	ProgressID     uuid.UUID  `json:"progress_id" db:"progress_id"`
+	ProjectID      uuid.UUID  `json:"project_id" db:"project_id"`
+	Stage          int        `json:"stage" db:"stage"`           // 1, 2, 3
+	Status         string     `json:"status" db:"status"`         // not_started, in_progress, completed, failed
+	CompletionRate int        `json:"completion_rate" db:"completion_rate"` // 0-100
+	StartedAt      *time.Time `json:"started_at,omitempty" db:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty" db:"completed_at"`
+	DocumentCount  int        `json:"document_count" db:"document_count"`
+	PUMLCount      int        `json:"puml_count" db:"puml_count"`
+	LastTaskID     *uuid.UUID `json:"last_task_id,omitempty" db:"last_task_id"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// 新增任务状态常量
+const (
+	// 异步任务状态
+	TaskStatusPending   = "pending"
+	TaskStatusRunning   = "running"  
+	TaskStatusCompleted = "completed"
+	TaskStatusFailed    = "failed"
+
+	// 异步任务类型
+	TaskTypeStageDocuments = "stage_document_generation"
+	TaskTypePUMLGeneration = "puml_generation"
+	TaskTypeDocumentGeneration = "document_generation"
+	TaskTypeRequirementAnalysis = "requirement_analysis"
+	TaskTypeCompleteProjectDocuments = "complete_project_documents" // 新增：一键生成完整项目文档
+
+	// 阶段状态
+	StageStatusNotStarted  = "not_started"
+	StageStatusInProgress  = "in_progress"
+	StageStatusCompleted   = "completed"
+	StageStatusFailed      = "failed"
+)
+
+// ===== 请求类型 =====
+
+// StartAsyncTaskRequest 启动异步任务请求
+type StartAsyncTaskRequest struct {
+	ProjectID uuid.UUID `json:"project_id" validate:"required"`
+	TaskType  string    `json:"task_type" validate:"required"`
+	Stage     *int      `json:"stage,omitempty"` // 阶段文档生成时需要
+	Metadata  string    `json:"metadata,omitempty"` // JSON格式的额外参数
+}
+
+// AsyncTaskResponse 异步任务响应
+type AsyncTaskResponse struct {
+	TaskID   uuid.UUID `json:"task_id"`
+	Status   string    `json:"status"`
+	Progress int       `json:"progress"`
+	Message  string    `json:"message,omitempty"`
+}
+
+// GetStageProgressRequest 获取阶段进度请求  
+type GetStageProgressRequest struct {
+	ProjectID uuid.UUID `json:"project_id" validate:"required"`
+}
+
+// StageProgressResponse 阶段进度响应
+type StageProgressResponse struct {
+	ProjectID uuid.UUID       `json:"project_id"`
+	Stages    []*StageProgress `json:"stages"`
+	Overall   struct {
+		CompletionRate int    `json:"completion_rate"`
+		Status         string `json:"status"`
+	} `json:"overall"`
+}

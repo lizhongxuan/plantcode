@@ -465,4 +465,336 @@ func (r *MySQLRepository) UpdateCommonModule(module *model.CommonModule) error {
 // DeleteCommonModule 删除通用模块
 func (r *MySQLRepository) DeleteCommonModule(moduleID uuid.UUID) error {
 	return fmt.Errorf("功能待实现")
+}
+
+// ===== 异步任务相关操作 =====
+
+// CreateAsyncTask 创建异步任务
+func (r *MySQLRepository) CreateAsyncTask(task *model.AsyncTask) error {
+	query := `
+		INSERT INTO async_tasks (task_id, user_id, project_id, task_type, task_name, status, progress, result_data, error_message, created_at, started_at, completed_at, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	
+	_, err := r.db.MySQL.Exec(query,
+		task.TaskID,
+		task.UserID,
+		task.ProjectID,
+		task.TaskType,
+		task.TaskName,
+		task.Status,
+		task.Progress,
+		task.ResultData,
+		task.ErrorMessage,
+		task.CreatedAt,
+		convertTimePtr(task.StartedAt),
+		convertTimePtr(task.CompletedAt),
+		task.Metadata,
+	)
+	
+	if err != nil {
+		return fmt.Errorf("创建异步任务失败: %w", err)
+	}
+	
+	return nil
+}
+
+// GetAsyncTask 获取异步任务
+func (r *MySQLRepository) GetAsyncTask(taskID uuid.UUID) (*model.AsyncTask, error) {
+	query := `
+		SELECT task_id, user_id, project_id, task_type, task_name, status, progress, result_data, error_message, created_at, started_at, completed_at, metadata
+		FROM async_tasks
+		WHERE task_id = ?
+	`
+	
+	var task model.AsyncTask
+	var startedAt, completedAt sql.NullTime
+	
+	err := r.db.MySQL.QueryRow(query, taskID).Scan(
+		&task.TaskID,
+		&task.UserID,
+		&task.ProjectID,
+		&task.TaskType,
+		&task.TaskName,
+		&task.Status,
+		&task.Progress,
+		&task.ResultData,
+		&task.ErrorMessage,
+		&task.CreatedAt,
+		&startedAt,
+		&completedAt,
+		&task.Metadata,
+	)
+	
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("任务不存在")
+		}
+		return nil, fmt.Errorf("获取异步任务失败: %w", err)
+	}
+	
+	task.StartedAt = convertNullTime(startedAt)
+	task.CompletedAt = convertNullTime(completedAt)
+	
+	return &task, nil
+}
+
+// UpdateAsyncTask 更新异步任务
+func (r *MySQLRepository) UpdateAsyncTask(task *model.AsyncTask) error {
+	query := `
+		UPDATE async_tasks 
+		SET status = ?, progress = ?, result_data = ?, error_message = ?, started_at = ?, completed_at = ?
+		WHERE task_id = ?
+	`
+	
+	result, err := r.db.MySQL.Exec(query,
+		task.Status,
+		task.Progress,
+		task.ResultData,
+		task.ErrorMessage,
+		convertTimePtr(task.StartedAt),
+		convertTimePtr(task.CompletedAt),
+		task.TaskID,
+	)
+	
+	if err != nil {
+		return fmt.Errorf("更新异步任务失败: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("获取影响行数失败: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("任务不存在")
+	}
+	
+	return nil
+}
+
+// GetTasksByProject 获取项目的任务列表
+func (r *MySQLRepository) GetTasksByProject(projectID uuid.UUID, taskType string) ([]*model.AsyncTask, error) {
+	var query string
+	var args []interface{}
+	
+	if taskType != "" {
+		query = `
+			SELECT task_id, user_id, project_id, task_type, task_name, status, progress, result_data, error_message, created_at, started_at, completed_at, metadata
+			FROM async_tasks
+			WHERE project_id = ? AND task_type = ?
+			ORDER BY created_at DESC
+		`
+		args = []interface{}{projectID, taskType}
+	} else {
+		query = `
+			SELECT task_id, user_id, project_id, task_type, task_name, status, progress, result_data, error_message, created_at, started_at, completed_at, metadata
+			FROM async_tasks
+			WHERE project_id = ?
+			ORDER BY created_at DESC
+		`
+		args = []interface{}{projectID}
+	}
+	
+	rows, err := r.db.MySQL.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("查询任务列表失败: %w", err)
+	}
+	defer rows.Close()
+	
+	var tasks []*model.AsyncTask
+	for rows.Next() {
+		var task model.AsyncTask
+		var startedAt, completedAt sql.NullTime
+		
+		err := rows.Scan(
+			&task.TaskID,
+			&task.UserID,
+			&task.ProjectID,
+			&task.TaskType,
+			&task.TaskName,
+			&task.Status,
+			&task.Progress,
+			&task.ResultData,
+			&task.ErrorMessage,
+			&task.CreatedAt,
+			&startedAt,
+			&completedAt,
+			&task.Metadata,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("扫描任务数据失败: %w", err)
+		}
+		
+		task.StartedAt = convertNullTime(startedAt)
+		task.CompletedAt = convertNullTime(completedAt)
+		tasks = append(tasks, &task)
+	}
+	
+	return tasks, nil
+}
+
+// ===== 阶段进度相关操作 =====
+
+// CreateStageProgress 创建阶段进度
+func (r *MySQLRepository) CreateStageProgress(progress *model.StageProgress) error {
+	query := `
+		INSERT INTO stage_progress (progress_id, project_id, stage, status, completion_rate, started_at, completed_at, document_count, puml_count, last_task_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	
+	now := time.Now()
+	_, err := r.db.MySQL.Exec(query,
+		progress.ProgressID,
+		progress.ProjectID,
+		progress.Stage,
+		progress.Status,
+		progress.CompletionRate,
+		convertTimePtr(progress.StartedAt),
+		convertTimePtr(progress.CompletedAt),
+		progress.DocumentCount,
+		progress.PUMLCount,
+		progress.LastTaskID,
+		now,
+		now,
+	)
+	
+	if err != nil {
+		return fmt.Errorf("创建阶段进度失败: %w", err)
+	}
+	
+	return nil
+}
+
+// GetStageProgress 获取项目的所有阶段进度
+func (r *MySQLRepository) GetStageProgress(projectID uuid.UUID) ([]*model.StageProgress, error) {
+	query := `
+		SELECT progress_id, project_id, stage, status, completion_rate, started_at, completed_at, document_count, puml_count, last_task_id, created_at, updated_at
+		FROM stage_progress
+		WHERE project_id = ?
+		ORDER BY stage ASC
+	`
+	
+	rows, err := r.db.MySQL.Query(query, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("查询阶段进度失败: %w", err)
+	}
+	defer rows.Close()
+	
+	var progresses []*model.StageProgress
+	for rows.Next() {
+		var progress model.StageProgress
+		var startedAt, completedAt sql.NullTime
+		var lastTaskID sql.NullString
+		
+		err := rows.Scan(
+			&progress.ProgressID,
+			&progress.ProjectID,
+			&progress.Stage,
+			&progress.Status,
+			&progress.CompletionRate,
+			&startedAt,
+			&completedAt,
+			&progress.DocumentCount,
+			&progress.PUMLCount,
+			&lastTaskID,
+			&progress.CreatedAt,
+			&progress.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("扫描阶段进度数据失败: %w", err)
+		}
+		
+		progress.StartedAt = convertNullTime(startedAt)
+		progress.CompletedAt = convertNullTime(completedAt)
+		if lastTaskID.Valid {
+			taskID, _ := uuid.Parse(lastTaskID.String)
+			progress.LastTaskID = &taskID
+		}
+		
+		progresses = append(progresses, &progress)
+	}
+	
+	return progresses, nil
+}
+
+// UpdateStageProgress 更新阶段进度
+func (r *MySQLRepository) UpdateStageProgress(progress *model.StageProgress) error {
+	query := `
+		UPDATE stage_progress 
+		SET status = ?, completion_rate = ?, started_at = ?, completed_at = ?, document_count = ?, puml_count = ?, last_task_id = ?, updated_at = ?
+		WHERE progress_id = ?
+	`
+	
+	now := time.Now()
+	result, err := r.db.MySQL.Exec(query,
+		progress.Status,
+		progress.CompletionRate,
+		convertTimePtr(progress.StartedAt),
+		convertTimePtr(progress.CompletedAt),
+		progress.DocumentCount,
+		progress.PUMLCount,
+		progress.LastTaskID,
+		now,
+		progress.ProgressID,
+	)
+	
+	if err != nil {
+		return fmt.Errorf("更新阶段进度失败: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("获取影响行数失败: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("阶段进度不存在")
+	}
+	
+	return nil
+}
+
+// GetStageProgressByStage 获取指定阶段的进度
+func (r *MySQLRepository) GetStageProgressByStage(projectID uuid.UUID, stage int) (*model.StageProgress, error) {
+	query := `
+		SELECT progress_id, project_id, stage, status, completion_rate, started_at, completed_at, document_count, puml_count, last_task_id, created_at, updated_at
+		FROM stage_progress
+		WHERE project_id = ? AND stage = ?
+	`
+	
+	var progress model.StageProgress
+	var startedAt, completedAt sql.NullTime
+	var lastTaskID sql.NullString
+	
+	err := r.db.MySQL.QueryRow(query, projectID, stage).Scan(
+		&progress.ProgressID,
+		&progress.ProjectID,
+		&progress.Stage,
+		&progress.Status,
+		&progress.CompletionRate,
+		&startedAt,
+		&completedAt,
+		&progress.DocumentCount,
+		&progress.PUMLCount,
+		&lastTaskID,
+		&progress.CreatedAt,
+		&progress.UpdatedAt,
+	)
+	
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("阶段进度不存在")
+		}
+		return nil, fmt.Errorf("获取阶段进度失败: %w", err)
+	}
+	
+	progress.StartedAt = convertNullTime(startedAt)
+	progress.CompletedAt = convertNullTime(completedAt)
+	if lastTaskID.Valid {
+		taskID, _ := uuid.Parse(lastTaskID.String)
+		progress.LastTaskID = &taskID
+	}
+	
+	return &progress, nil
 } 

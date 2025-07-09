@@ -1,0 +1,22 @@
+digraph module_dependencies {
+    node [shape=box, style=filled, fillcolor=lightblue];
+    
+    api;
+    service -> api;
+    config -> api;
+    service;
+    repository -> service;
+    model -> service;
+    config -> service;
+    utils -> service;
+    ai -> service;
+    repository;
+    model -> repository;
+    config -> repository;
+    model;
+    config;
+    utils;
+    ai;
+    model -> ai;
+    config -> ai;
+}

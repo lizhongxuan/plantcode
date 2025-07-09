@@ -33,7 +33,82 @@ func NewAIService(aiManager *ai.AIManager, aiRepo *repository.AIRepository, mysq
 
 // ===== 需求分析相关服务 =====
 
-// AnalyzeRequirement 分析业务需求
+// AnalyzeRequirementWithUser 基于用户AI配置分析业务需求
+func (s *AIService) AnalyzeRequirementWithUser(ctx context.Context, req *model.AIAnalysisRequest, userID uuid.UUID) (*model.Requirement, error) {
+	// 验证项目是否存在
+	_, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("项目不存在: %w", err)
+	}
+
+	// 获取用户AI配置
+	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	if err != nil {
+		// 如果没有用户配置，使用默认配置
+		log.Printf("获取用户AI配置失败，使用默认配置: %v", err)
+		return s.AnalyzeRequirement(ctx, req)
+	}
+
+	// 确定使用的provider
+	provider := ai.AIProvider(userConfig.Provider)
+	var apiKey string
+
+	switch userConfig.Provider {
+	case "openai":
+		apiKey = userConfig.OpenAIAPIKey
+	case "claude":
+		apiKey = userConfig.ClaudeAPIKey
+	case "gemini":
+		apiKey = userConfig.GeminiAPIKey
+	default:
+		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
+	}
+
+	// 创建临时AI客户端配置
+	clientConfig := ai.AIManagerConfig{
+		DefaultProvider: provider,
+		EnableCache:     true,
+		CacheTTL:        time.Hour,
+	}
+
+	// 根据provider设置对应的客户端配置
+	switch provider {
+	case ai.ProviderOpenAI:
+		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	case ai.ProviderClaude:
+		// Claude客户端暂时不可用
+		return nil, fmt.Errorf("Claude客户端暂时不可用")
+	case ai.ProviderGemini:
+		clientConfig.GeminiConfig = &ai.GeminiConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	}
+
+	// 创建用户特定的AI管理器
+	tempAIManager, err := ai.NewAIManager(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
+	}
+
+	// 调用AI分析
+	analysis, err := tempAIManager.AnalyzeRequirement(ctx, req.Requirement, provider)
+	if err != nil {
+		return nil, fmt.Errorf("AI分析失败: %w", err)
+	}
+
+	// 转换为数据库模型并保存
+	return s.saveAnalysisResult(req, analysis, tempAIManager, provider)
+}
+
+// AnalyzeRequirement 分析业务需求（原有方法，作为兼容性保留）
 func (s *AIService) AnalyzeRequirement(ctx context.Context, req *model.AIAnalysisRequest) (*model.Requirement, error) {
 	// 验证项目是否存在
 	_, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
@@ -53,15 +128,21 @@ func (s *AIService) AnalyzeRequirement(ctx context.Context, req *model.AIAnalysi
 		return nil, fmt.Errorf("AI分析失败: %w", err)
 	}
 
+	// 转换为数据库模型并保存
+	return s.saveAnalysisResult(req, analysis, s.aiManager, provider)
+}
+
+// saveAnalysisResult 保存分析结果到数据库的公共方法
+func (s *AIService) saveAnalysisResult(req *model.AIAnalysisRequest, analysis *ai.RequirementAnalysis, aiManager *ai.AIManager, provider ai.AIProvider) (*model.Requirement, error) {
 	// 转换为数据库模型
 	dbAnalysis := &model.Requirement{
-		RequirementID:         uuid.New(),
-		ProjectID:             req.ProjectID,
-		RawRequirement:        req.Requirement,
-		CompletenessScore:     analysis.CompletionScore,
-		AnalysisStatus:        model.AnalysisStatusCompleted,
-		CreatedAt:             time.Now(),
-		UpdatedAt:             time.Now(),
+		RequirementID:     uuid.New(),
+		ProjectID:         req.ProjectID,
+		RawRequirement:    req.Requirement,
+		CompletenessScore: analysis.CompletionScore,
+		AnalysisStatus:    model.AnalysisStatusCompleted,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	// 序列化结构化需求
@@ -93,7 +174,7 @@ func (s *AIService) AnalyzeRequirement(ctx context.Context, req *model.AIAnalysi
 	// 如果有缺失信息，生成补充问题
 	if len(analysis.MissingInfo) > 0 {
 		go func() {
-			questions, err := s.aiManager.GenerateQuestions(context.Background(), analysis, provider)
+			questions, err := aiManager.GenerateQuestions(context.Background(), analysis, provider)
 			if err != nil {
 				log.Printf("生成补充问题失败: %v", err)
 				return
@@ -110,7 +191,7 @@ func (s *AIService) AnalyzeRequirement(ctx context.Context, req *model.AIAnalysi
 					AnswerStatus:     model.QuestionStatusPending,
 					CreatedAt:        time.Now(),
 				}
-				
+
 				if err := s.aiRepo.CreateQuestion(dbQuestion); err != nil {
 					log.Printf("保存问题失败: %v", err)
 				}
@@ -245,6 +326,16 @@ func (s *AIService) UpdatePUMLDiagram(diagramID uuid.UUID, req *model.UpdatePUML
 	return s.aiRepo.UpdatePUMLDiagram(diagram)
 }
 
+// CreatePUML 创建PUML图表
+func (s *AIService) CreatePUML(diagram *model.PUMLDiagram) error {
+	return s.aiRepo.CreatePUMLDiagram(diagram)
+}
+
+// DeletePUMLDiagram 删除PUML图表
+func (s *AIService) DeletePUMLDiagram(diagramID uuid.UUID) error {
+	return s.mysqlRepo.DeletePUMLDiagram(diagramID)
+}
+
 // ===== 文档生成相关服务 =====
 
 // GenerateDocument 生成开发文档
@@ -357,7 +448,7 @@ func (s *AIService) UpdateDocument(documentID uuid.UUID, req *model.UpdateDocume
 func (s *AIService) CreateChatSession(req *model.ChatSessionCreateRequest, userID uuid.UUID) (*model.ChatSession, error) {
 	var projectUUID uuid.UUID
 	var err error
-	
+
 	// 如果提供了项目ID，验证项目是否存在
 	if req.ProjectID != "" {
 		projectUUID, err = uuid.Parse(req.ProjectID)
@@ -529,6 +620,9 @@ func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAI
 		if req.ClaudeAPIKey != "" {
 			config.ClaudeAPIKey = req.ClaudeAPIKey
 		}
+		if req.GeminiAPIKey != "" {
+			config.GeminiAPIKey = req.GeminiAPIKey
+		}
 
 		err = s.aiRepo.UpdateUserAIConfig(config)
 	} else {
@@ -539,6 +633,7 @@ func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAI
 			Provider:     req.Provider,
 			OpenAIAPIKey: req.OpenAIAPIKey,
 			ClaudeAPIKey: req.ClaudeAPIKey,
+			GeminiAPIKey: req.GeminiAPIKey,
 			DefaultModel: req.DefaultModel,
 			MaxTokens:    req.MaxTokens,
 			IsActive:     true,
@@ -559,7 +654,7 @@ func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAI
 // TestAIConnection 测试AI连接
 func (s *AIService) TestAIConnection(req *model.TestAIConnectionRequest) (*model.AIConnectionTestResult, error) {
 	start := time.Now()
-	
+
 	result := &model.AIConnectionTestResult{
 		Provider: req.Provider,
 		Model:    req.Model,
@@ -584,6 +679,15 @@ func (s *AIService) TestAIConnection(req *model.TestAIConnectionRequest) (*model
 			result.Success = true
 			result.Message = "Claude连接测试成功"
 		}
+	case "gemini":
+		err := s.testGeminiConnection(req.APIKey, req.Model)
+		if err != nil {
+			result.Success = false
+			result.Message = err.Error()
+		} else {
+			result.Success = true
+			result.Message = "Gemini连接测试成功"
+		}
 	default:
 		result.Success = false
 		result.Message = "不支持的AI提供商"
@@ -600,17 +704,17 @@ func (s *AIService) testOpenAIConnection(apiKey, model string) error {
 	if apiKey == "" {
 		return fmt.Errorf("OpenAI API密钥不能为空")
 	}
-	
+
 	if !strings.HasPrefix(apiKey, "sk-") {
 		return fmt.Errorf("OpenAI API密钥格式无效")
 	}
 
 	// 模拟网络请求延迟
 	time.Sleep(500 * time.Millisecond)
-	
+
 	// 这里可以添加真实的OpenAI API测试
 	// 例如发送一个简单的completion请求
-	
+
 	return nil
 }
 
@@ -621,16 +725,38 @@ func (s *AIService) testClaudeConnection(apiKey, model string) error {
 	if apiKey == "" {
 		return fmt.Errorf("Claude API密钥不能为空")
 	}
-	
+
 	if !strings.HasPrefix(apiKey, "sk-ant-") {
 		return fmt.Errorf("Claude API密钥格式无效")
 	}
 
 	// 模拟网络请求延迟
 	time.Sleep(800 * time.Millisecond)
-	
+
 	// 这里可以添加真实的Claude API测试
-	
+
+	return nil
+}
+
+// testGeminiConnection 测试Gemini连接
+func (s *AIService) testGeminiConnection(apiKey, model string) error {
+	// 这里应该调用Gemini API进行简单的测试请求
+	// 暂时模拟测试
+	if apiKey == "" {
+		return fmt.Errorf("Gemini API密钥不能为空")
+	}
+
+	// Gemini API密钥格式通常以"AIza"开头
+	if !strings.HasPrefix(apiKey, "AIza") {
+		return fmt.Errorf("Gemini API密钥格式无效")
+	}
+
+	// 模拟网络请求延迟
+	time.Sleep(600 * time.Millisecond)
+
+	// 这里可以添加真实的Gemini API测试
+	// 例如发送一个简单的generateContent请求
+
 	return nil
 }
 
@@ -648,10 +774,19 @@ func (s *AIService) GetAvailableModels(provider string) ([]string, error) {
 	case "claude":
 		return []string{
 			"claude-3-opus-20240229",
-			"claude-3-sonnet-20240229", 
+			"claude-3-sonnet-20240229",
 			"claude-3-haiku-20240307",
 			"claude-2.1",
 			"claude-2.0",
+		}, nil
+	case "gemini":
+		return []string{
+			"gemini-2.5-pro",
+			"gemini-1.5-pro",
+			"gemini-1.5-flash",
+			"gemini-pro",
+			"gemini-pro-vision",
+			"gemini-ultra",
 		}, nil
 	default:
 		return nil, fmt.Errorf("不支持的AI提供商: %s", provider)
@@ -662,18 +797,73 @@ func (s *AIService) GetAvailableModels(provider string) ([]string, error) {
 
 // ProjectChatResponse 项目AI对话响应
 type ProjectChatResponse struct {
-	Message          string                  `json:"message"`
-	UpdatedAnalysis  *model.Requirement     `json:"updated_analysis,omitempty"`
-	Suggestions      []string               `json:"suggestions,omitempty"`
-	RelatedQuestions []string               `json:"related_questions,omitempty"`
+	Message          string             `json:"message"`
+	UpdatedAnalysis  *model.Requirement `json:"updated_analysis,omitempty"`
+	Suggestions      []string           `json:"suggestions,omitempty"`
+	RelatedQuestions []string           `json:"related_questions,omitempty"`
 }
 
-// ProjectChat 项目上下文AI对话
-func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, message, context string) (*ProjectChatResponse, error) {
+// ProjectChat 项目上下文AI对话 - 使用用户AI配置
+func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, message, context string, userID uuid.UUID) (*ProjectChatResponse, error) {
 	// 验证项目是否存在
 	project, err := s.mysqlRepo.GetProjectByID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("项目不存在: %w", err)
+	}
+
+	// 获取用户AI配置
+	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
+	}
+
+	// 确定使用的provider
+	provider := ai.AIProvider(userConfig.Provider)
+	var apiKey string
+
+	switch userConfig.Provider {
+	case "openai":
+		apiKey = userConfig.OpenAIAPIKey
+	case "claude":
+		apiKey = userConfig.ClaudeAPIKey
+	case "gemini":
+		apiKey = userConfig.GeminiAPIKey
+	default:
+		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
+	}
+
+	// 创建临时AI客户端配置
+	clientConfig := ai.AIManagerConfig{
+		DefaultProvider: provider,
+		EnableCache:     true,
+		CacheTTL:        time.Hour,
+	}
+
+	// 根据provider设置对应的客户端配置
+	switch provider {
+	case ai.ProviderOpenAI:
+		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	case ai.ProviderClaude:
+		// Claude客户端暂时不可用
+		return nil, fmt.Errorf("Claude客户端暂时不可用")
+	case ai.ProviderGemini:
+		clientConfig.GeminiConfig = &ai.GeminiConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	}
+
+	// 创建用户特定的AI管理器
+	tempAIManager, err := ai.NewAIManager(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
 	}
 
 	// 获取项目的需求分析数据作为上下文
@@ -697,7 +887,7 @@ func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, messag
 	// 如果有需求分析数据，添加到上下文中
 	if len(analyses) > 0 {
 		latestAnalysis := analyses[0]
-		
+
 		// 解析结构化需求
 		var structuredReq map[string]interface{}
 		if err := json.Unmarshal([]byte(latestAnalysis.StructuredRequirement), &structuredReq); err == nil {
@@ -712,9 +902,8 @@ func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, messag
 		return nil, fmt.Errorf("序列化上下文数据失败: %w", err)
 	}
 
-	// 调用AI进行对话
-	provider := ai.ProviderOpenAI // 可以后续从用户配置中获取
-	response, err := s.aiManager.ProjectChat(ctx, message, string(contextJSON), provider)
+	// 调用AI进行对话 - 使用用户配置的AI提供商
+	response, err := tempAIManager.ProjectChat(ctx, message, string(contextJSON), provider)
 	if err != nil {
 		return nil, fmt.Errorf("AI对话失败: %w", err)
 	}
@@ -742,4 +931,380 @@ func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, messag
 	}
 
 	return chatResponse, nil
-} 
+}
+
+// ===== 分阶段文档生成相关服务 =====
+
+// GenerateStageDocuments 分阶段生成项目文档
+func (s *AIService) GenerateStageDocuments(ctx context.Context, req *model.GenerateStageDocumentsRequest, userID uuid.UUID) (*model.StageDocumentsResult, error) {
+	// 验证项目是否存在
+	project, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("项目不存在: %w", err)
+	}
+
+	// 获取项目的需求分析
+	analyses, err := s.aiRepo.GetRequirementAnalysesByProject(req.ProjectID)
+	if err != nil || len(analyses) == 0 {
+		return nil, fmt.Errorf("请先完成项目需求分析")
+	}
+
+	latestAnalysis := analyses[0]
+
+	// 获取用户AI配置
+	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
+	}
+
+	// 确定使用的provider
+	provider := ai.AIProvider(userConfig.Provider)
+	var apiKey string
+
+	switch userConfig.Provider {
+	case "openai":
+		apiKey = userConfig.OpenAIAPIKey
+	case "claude":
+		apiKey = userConfig.ClaudeAPIKey
+	case "gemini":
+		apiKey = userConfig.GeminiAPIKey
+	default:
+		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
+	}
+
+	// 创建临时AI客户端配置
+	clientConfig := ai.AIManagerConfig{
+		DefaultProvider: provider,
+		EnableCache:     true,
+		CacheTTL:        time.Hour,
+	}
+
+	// 根据provider设置对应的客户端配置
+	switch provider {
+	case ai.ProviderOpenAI:
+		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	case ai.ProviderClaude:
+		// Claude客户端暂时不可用
+		return nil, fmt.Errorf("Claude客户端暂时不可用")
+	case ai.ProviderGemini:
+		clientConfig.GeminiConfig = &ai.GeminiConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	}
+
+	// 创建用户特定的AI管理器
+	tempAIManager, err := ai.NewAIManager(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
+	}
+
+	// 构建AI分析对象
+	var structuredReq map[string]interface{}
+	if err := json.Unmarshal([]byte(latestAnalysis.StructuredRequirement), &structuredReq); err != nil {
+		return nil, fmt.Errorf("解析结构化需求失败: %w", err)
+	}
+
+	analysis := &ai.RequirementAnalysis{
+		ID:           latestAnalysis.RequirementID.String(),
+		ProjectID:    req.ProjectID.String(),
+		OriginalText: latestAnalysis.RawRequirement,
+	}
+
+	// 提取核心功能
+	if coreFuncs, ok := structuredReq["core_functions"].([]interface{}); ok {
+		for _, fn := range coreFuncs {
+			if funcStr, ok := fn.(string); ok {
+				analysis.CoreFunctions = append(analysis.CoreFunctions, funcStr)
+			}
+		}
+	}
+
+	result := &model.StageDocumentsResult{
+		ProjectID:    req.ProjectID,
+		Stage:        req.Stage,
+		GeneratedAt:  time.Now(),
+		Documents:    make([]*model.Document, 0),
+		PUMLDiagrams: make([]*model.PUMLDiagram, 0),
+	}
+
+	// 根据不同阶段生成对应的文档
+	switch req.Stage {
+	case 1:
+		// 第一阶段：项目需求文档 + 系统架构图 + 业务流程图 + 数据模型图 + 交互流程图
+		log.Printf("开始生成第一阶段文档 (项目: %s)...", project.ProjectName)
+		// TODO: 使用tempAIManager实现第一阶段文档生成
+		_ = tempAIManager // 临时使用变量避免编译错误
+
+	case 2:
+		// 第二阶段：技术规范文档 + API设计 + 数据库设计
+		log.Printf("开始生成第二阶段文档 (项目: %s)...", project.ProjectName)
+		// TODO: 使用tempAIManager实现第二阶段文档生成
+		_ = tempAIManager // 临时使用变量避免编译错误
+
+	case 3:
+		// 第三阶段：开发流程文档 + 测试用例文档 + 部署文档
+		log.Printf("开始生成第三阶段文档 (项目: %s)...", project.ProjectName)
+		// TODO: 使用tempAIManager实现第三阶段文档生成
+		_ = tempAIManager // 临时使用变量避免编译错误
+
+	default:
+		return nil, fmt.Errorf("无效的阶段编号，支持的阶段：1、2、3")
+	}
+
+	return result, nil
+}
+
+// GenerateSpecificStageDocuments 生成指定阶段的特定文档（用于一键生成完整项目文档）
+func (s *AIService) GenerateSpecificStageDocuments(ctx context.Context, req *model.GenerateStageDocumentsRequest, userID uuid.UUID, documentNames []string) (*model.StageDocumentsResult, error) {
+	// 注意documentNames参数将在将来的实现中使用
+	log.Printf("生成指定文档: %v", documentNames)
+	
+	// 调用现有的GenerateStageDocuments方法
+	return s.GenerateStageDocuments(ctx, req, userID)
+}
+
+// GeneratePUMLWithUser 使用用户配置生成PUML图表
+func (s *AIService) GeneratePUMLWithUser(ctx context.Context, req *model.GeneratePUMLRequest, userID uuid.UUID) (*model.PUMLDiagram, error) {
+	// 获取用户AI配置
+	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
+	}
+
+	// 确定使用的provider
+	provider := ai.AIProvider(userConfig.Provider)
+	var apiKey string
+
+	switch userConfig.Provider {
+	case "openai":
+		apiKey = userConfig.OpenAIAPIKey
+	case "claude":
+		apiKey = userConfig.ClaudeAPIKey
+	case "gemini":
+		apiKey = userConfig.GeminiAPIKey
+	default:
+		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
+	}
+
+	// 创建临时AI客户端配置
+	clientConfig := ai.AIManagerConfig{
+		DefaultProvider: provider,
+		EnableCache:     true,
+		CacheTTL:        time.Hour,
+	}
+
+	// 根据provider设置对应的客户端配置
+	switch provider {
+	case ai.ProviderOpenAI:
+		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	case ai.ProviderClaude:
+		// Claude客户端暂时不可用
+		return nil, fmt.Errorf("Claude客户端暂时不可用")
+	case ai.ProviderGemini:
+		clientConfig.GeminiConfig = &ai.GeminiConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	}
+
+	// 创建用户特定的AI管理器
+	tempAIManager, err := ai.NewAIManager(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
+	}
+
+	// 获取需求分析数据
+	analysisID, err := uuid.Parse(req.AnalysisID)
+	if err != nil {
+		return nil, fmt.Errorf("无效的分析ID: %w", err)
+	}
+
+	analysis, err := s.aiRepo.GetRequirementAnalysis(analysisID)
+	if err != nil {
+		return nil, fmt.Errorf("获取需求分析失败: %w", err)
+	}
+
+	// 构建AI分析对象
+	var structuredReq map[string]interface{}
+	if err := json.Unmarshal([]byte(analysis.StructuredRequirement), &structuredReq); err != nil {
+		return nil, fmt.Errorf("解析结构化需求失败: %w", err)
+	}
+
+	aiAnalysis := &ai.RequirementAnalysis{
+		ID:           analysis.RequirementID.String(),
+		ProjectID:    analysis.ProjectID.String(),
+		OriginalText: analysis.RawRequirement,
+	}
+
+	// 提取核心功能
+	if coreFuncs, ok := structuredReq["core_functions"].([]interface{}); ok {
+		for _, fn := range coreFuncs {
+			if funcStr, ok := fn.(string); ok {
+				aiAnalysis.CoreFunctions = append(aiAnalysis.CoreFunctions, funcStr)
+			}
+		}
+	}
+
+	// 使用用户配置的AI管理器生成PUML
+	pumlDiagram, err := tempAIManager.GeneratePUML(ctx, aiAnalysis, ai.PUMLType(req.DiagramType), provider)
+	if err != nil {
+		return nil, fmt.Errorf("AI生成PUML失败: %w", err)
+	}
+
+	// 创建数据库记录
+	diagram := &model.PUMLDiagram{
+		DiagramID:   uuid.New(),
+		ProjectID:   analysis.ProjectID,
+		DiagramType: req.DiagramType,
+		DiagramName: fmt.Sprintf("%s图表", req.DiagramType),
+		PUMLContent: pumlDiagram.Content,
+		Version:     1,
+		Stage:       1,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	// 保存到数据库
+	if err := s.aiRepo.CreatePUMLDiagram(diagram); err != nil {
+		return nil, fmt.Errorf("保存PUML图表失败: %w", err)
+	}
+
+	return diagram, nil
+}
+
+// GenerateDocumentWithUser 使用用户配置生成开发文档
+func (s *AIService) GenerateDocumentWithUser(ctx context.Context, req *model.GenerateDocumentRequest, userID uuid.UUID) (*model.Document, error) {
+	// 获取用户AI配置
+	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
+	}
+
+	// 确定使用的provider
+	provider := ai.AIProvider(userConfig.Provider)
+	var apiKey string
+
+	switch userConfig.Provider {
+	case "openai":
+		apiKey = userConfig.OpenAIAPIKey
+	case "claude":
+		apiKey = userConfig.ClaudeAPIKey
+	case "gemini":
+		apiKey = userConfig.GeminiAPIKey
+	default:
+		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
+	}
+
+	// 创建临时AI客户端配置
+	clientConfig := ai.AIManagerConfig{
+		DefaultProvider: provider,
+		EnableCache:     true,
+		CacheTTL:        time.Hour,
+	}
+
+	// 根据provider设置对应的客户端配置
+	switch provider {
+	case ai.ProviderOpenAI:
+		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	case ai.ProviderClaude:
+		// Claude客户端暂时不可用
+		return nil, fmt.Errorf("Claude客户端暂时不可用")
+	case ai.ProviderGemini:
+		clientConfig.GeminiConfig = &ai.GeminiConfig{
+			APIKey: apiKey,
+			Model:  userConfig.DefaultModel,
+		}
+	}
+
+	// 创建用户特定的AI管理器
+	tempAIManager, err := ai.NewAIManager(clientConfig)
+	if err != nil {
+		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
+	}
+
+	// 获取需求分析数据
+	analysisID, err := uuid.Parse(req.AnalysisID)
+	if err != nil {
+		return nil, fmt.Errorf("无效的分析ID: %w", err)
+	}
+
+	analysis, err := s.aiRepo.GetRequirementAnalysis(analysisID)
+	if err != nil {
+		return nil, fmt.Errorf("获取需求分析失败: %w", err)
+	}
+
+	// 构建AI分析对象
+	var structuredReq map[string]interface{}
+	if err := json.Unmarshal([]byte(analysis.StructuredRequirement), &structuredReq); err != nil {
+		return nil, fmt.Errorf("解析结构化需求失败: %w", err)
+	}
+
+	aiAnalysis := &ai.RequirementAnalysis{
+		ID:           analysis.RequirementID.String(),
+		ProjectID:    analysis.ProjectID.String(),
+		OriginalText: analysis.RawRequirement,
+	}
+
+	// 提取核心功能
+	if coreFuncs, ok := structuredReq["core_functions"].([]interface{}); ok {
+		for _, fn := range coreFuncs {
+			if funcStr, ok := fn.(string); ok {
+				aiAnalysis.CoreFunctions = append(aiAnalysis.CoreFunctions, funcStr)
+			}
+		}
+	}
+
+	// 使用用户配置的AI管理器生成文档
+	aiDocument, err := tempAIManager.GenerateDocument(ctx, aiAnalysis, provider)
+	if err != nil {
+		return nil, fmt.Errorf("AI生成文档失败: %w", err)
+	}
+
+	// 将AI文档转换为JSON字符串
+	documentJSON, err := json.Marshal(aiDocument)
+	if err != nil {
+		return nil, fmt.Errorf("序列化文档内容失败: %w", err)
+	}
+
+	// 创建数据库记录
+	document := &model.Document{
+		DocumentID:   uuid.New(),
+		ProjectID:    analysis.ProjectID,
+		DocumentType: "development",
+		DocumentName: "开发文档",
+		Content:      string(documentJSON),
+		Format:       "json",
+		Version:      1,
+		Stage:        1,
+		GeneratedAt:  time.Now(),
+	}
+
+	// 保存到数据库
+	if err := s.aiRepo.CreateDocument(document); err != nil {
+		return nil, fmt.Errorf("保存文档失败: %w", err)
+	}
+
+	return document, nil
+}

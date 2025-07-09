@@ -4,7 +4,7 @@ import { userApi } from '@/services/api';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
-import { User, Settings as SettingsIcon, Shield, Key, Save, Bot, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
+import { User, Shield, Key, Save, Bot, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
 
 interface UserSettings {
   full_name: string;
@@ -15,6 +15,7 @@ interface AIConfig {
   provider: string;
   openai_api_key: string;
   claude_api_key: string;
+  gemini_api_key: string;
   default_model: string;
   max_tokens: number;
 }
@@ -44,6 +45,7 @@ const Settings: React.FC = () => {
     provider: 'openai',
     openai_api_key: '',
     claude_api_key: '',
+    gemini_api_key: '',
     default_model: 'gpt-4',
     max_tokens: 2048,
   });
@@ -51,6 +53,19 @@ const Settings: React.FC = () => {
   const [showApiKeys, setShowApiKeys] = useState({
     openai: false,
     claude: false,
+    gemini: false,
+  });
+
+  const [apiKeysConfigured, setApiKeysConfigured] = useState({
+    openai: false,
+    claude: false,
+    gemini: false,
+  });
+
+  const [apiKeysDisplay, setApiKeysDisplay] = useState({
+    openai: '',
+    claude: '',
+    gemini: '',
   });
 
   const [aiProviders] = useState<AIProvider[]>([
@@ -65,12 +80,19 @@ const Settings: React.FC = () => {
       name: 'Claude (Anthropic)',
       models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku'],
       description: '专注于代码生成和分析的AI助手'
+    },
+    {
+      id: 'gemini',
+      name: 'Gemini (Google)',
+      models: ['gemini-2.5-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro', 'gemini-pro-vision'],
+      description: 'Google的多模态AI模型，支持文本和图像处理'
     }
   ]);
 
   const [connectionStatus, setConnectionStatus] = useState<{[key: string]: 'idle' | 'testing' | 'success' | 'error'}>({
     openai: 'idle',
-    claude: 'idle'
+    claude: 'idle',
+    gemini: 'idle'
   });
 
   useEffect(() => {
@@ -95,6 +117,16 @@ const Settings: React.FC = () => {
           default_model: config.default_model || 'gpt-4',
           max_tokens: config.max_tokens || 2048,
         }));
+        
+        // 设置API密钥配置状态
+        if (config.api_keys_configured) {
+          setApiKeysConfigured(config.api_keys_configured);
+        }
+        
+        // 设置脱敏显示的API密钥
+        if (config.api_keys_display) {
+          setApiKeysDisplay(config.api_keys_display);
+        }
       }
     } catch (err) {
       // 如果获取失败，使用默认配置
@@ -129,10 +161,18 @@ const Settings: React.FC = () => {
   };
 
   const testAPIConnection = async (provider: string) => {
-    const apiKey = provider === 'openai' ? aiConfig.openai_api_key : aiConfig.claude_api_key;
+    let apiKey = '';
+    if (provider === 'openai') {
+      apiKey = aiConfig.openai_api_key;
+    } else if (provider === 'claude') {
+      apiKey = aiConfig.claude_api_key;
+    } else if (provider === 'gemini') {
+      apiKey = aiConfig.gemini_api_key;
+    }
     
     if (!apiKey.trim()) {
-      setError(`请先输入${provider === 'openai' ? 'OpenAI' : 'Claude'} API密钥`);
+      const providerName = provider === 'openai' ? 'OpenAI' : provider === 'claude' ? 'Claude' : 'Gemini';
+      setError(`请先输入${providerName} API密钥`);
       return;
     }
 
@@ -150,10 +190,12 @@ const Settings: React.FC = () => {
         const result = response.data.data;
         if (result.success) {
           setConnectionStatus(prev => ({ ...prev, [provider]: 'success' }));
-          setMessage(`${provider === 'openai' ? 'OpenAI' : 'Claude'} 连接测试成功 (延迟: ${result.latency}ms)`);
+          const providerName = provider === 'openai' ? 'OpenAI' : provider === 'claude' ? 'Claude' : 'Gemini';
+          setMessage(`${providerName} 连接测试成功 (延迟: ${result.latency}ms)`);
         } else {
           setConnectionStatus(prev => ({ ...prev, [provider]: 'error' }));
-          setError(`${provider === 'openai' ? 'OpenAI' : 'Claude'} 连接测试失败: ${result.message}`);
+          const providerName = provider === 'openai' ? 'OpenAI' : provider === 'claude' ? 'Claude' : 'Gemini';
+          setError(`${providerName} 连接测试失败: ${result.message}`);
         }
       }
       
@@ -161,7 +203,8 @@ const Settings: React.FC = () => {
     } catch (err: any) {
       setConnectionStatus(prev => ({ ...prev, [provider]: 'error' }));
       const errorMessage = err.response?.data?.error || err.message;
-      setError(`${provider === 'openai' ? 'OpenAI' : 'Claude'} 连接测试失败: ${errorMessage}`);
+      const providerName = provider === 'openai' ? 'OpenAI' : provider === 'claude' ? 'Claude' : 'Gemini';
+      setError(`${providerName} 连接测试失败: ${errorMessage}`);
     }
   };
 
@@ -174,6 +217,7 @@ const Settings: React.FC = () => {
         provider: aiConfig.provider,
         openai_api_key: aiConfig.openai_api_key,
         claude_api_key: aiConfig.claude_api_key,
+        gemini_api_key: aiConfig.gemini_api_key,
         default_model: aiConfig.default_model,
         max_tokens: aiConfig.max_tokens,
       });
@@ -346,6 +390,11 @@ const Settings: React.FC = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             API 密钥
+                            {apiKeysConfigured.openai && (
+                              <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                                ✓ 已配置
+                              </span>
+                            )}
                           </label>
                           <div className="relative">
                             <Input
@@ -355,7 +404,7 @@ const Settings: React.FC = () => {
                                 ...prev,
                                 openai_api_key: e.target.value
                               }))}
-                              placeholder="sk-..."
+                              placeholder={apiKeysConfigured.openai ? "输入新密钥以更新现有配置" : "sk-..."}
                               className="pr-20"
                             />
                             <div className="absolute inset-y-0 right-0 flex items-center space-x-2 pr-3">
@@ -370,6 +419,11 @@ const Settings: React.FC = () => {
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
                             在 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI平台</a> 获取您的API密钥
+                            {apiKeysConfigured.openai && (
+                              <span className="block text-green-600 mt-1">
+                                当前配置: {apiKeysDisplay.openai}
+                              </span>
+                            )}
                           </p>
                         </div>
                         
@@ -412,6 +466,11 @@ const Settings: React.FC = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             API 密钥
+                            {apiKeysConfigured.claude && (
+                              <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                                ✓ 已配置
+                              </span>
+                            )}
                           </label>
                           <div className="relative">
                             <Input
@@ -421,7 +480,7 @@ const Settings: React.FC = () => {
                                 ...prev,
                                 claude_api_key: e.target.value
                               }))}
-                              placeholder="sk-ant-..."
+                              placeholder={apiKeysConfigured.claude ? "输入新密钥以更新现有配置" : "sk-ant-..."}
                               className="pr-20"
                             />
                             <div className="absolute inset-y-0 right-0 flex items-center space-x-2 pr-3">
@@ -436,6 +495,11 @@ const Settings: React.FC = () => {
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
                             在 <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Anthropic控制台</a> 获取您的API密钥
+                            {apiKeysConfigured.claude && (
+                              <span className="block text-green-600 mt-1">
+                                当前配置: {apiKeysDisplay.claude}
+                              </span>
+                            )}
                           </p>
                         </div>
                         
@@ -447,6 +511,82 @@ const Settings: React.FC = () => {
                             disabled={connectionStatus.claude === 'testing' || !aiConfig.claude_api_key.trim()}
                           >
                             {connectionStatus.claude === 'testing' ? '测试中...' : '测试连接'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gemini配置 */}
+                  {aiConfig.provider === 'gemini' && (
+                    <div className="border border-gray-200 rounded-lg p-6 mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-medium text-gray-900">Gemini 配置</h4>
+                        <div className="flex items-center space-x-2">
+                          {connectionStatus.gemini === 'success' && (
+                            <span className="flex items-center text-green-600 text-sm">
+                              <Check className="h-4 w-4 mr-1" />
+                              已连接
+                            </span>
+                          )}
+                          {connectionStatus.gemini === 'error' && (
+                            <span className="flex items-center text-red-600 text-sm">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              连接失败
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            API 密钥
+                            {apiKeysConfigured.gemini && (
+                              <span className="ml-2 text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                                ✓ 已配置
+                              </span>
+                            )}
+                          </label>
+                          <div className="relative">
+                            <Input
+                              type={showApiKeys.gemini ? "text" : "password"}
+                              value={aiConfig.gemini_api_key}
+                              onChange={(e) => setAIConfig(prev => ({
+                                ...prev,
+                                gemini_api_key: e.target.value
+                              }))}
+                              placeholder={apiKeysConfigured.gemini ? "输入新密钥以更新现有配置" : "AIza..."}
+                              className="pr-20"
+                            />
+                            <div className="absolute inset-y-0 right-0 flex items-center space-x-2 pr-3">
+                              <button
+                                type="button"
+                                onClick={() => setShowApiKeys(prev => ({ ...prev, gemini: !prev.gemini }))}
+                                className="text-gray-400 hover:text-gray-600"
+                              >
+                                {showApiKeys.gemini ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            在 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google AI Studio</a> 获取您的API密钥
+                            {apiKeysConfigured.gemini && (
+                              <span className="block text-green-600 mt-1">
+                                当前配置: {apiKeysDisplay.gemini}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        
+                        <div className="flex space-x-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => testAPIConnection('gemini')}
+                            disabled={connectionStatus.gemini === 'testing' || !aiConfig.gemini_api_key.trim()}
+                          >
+                            {connectionStatus.gemini === 'testing' ? '测试中...' : '测试连接'}
                           </Button>
                         </div>
                       </div>

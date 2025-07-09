@@ -1,0 +1,64 @@
+@startuml
+!theme plain
+skinparam actorStyle awesome
+skinparam sequenceMessageAlign center
+
+title AI开发平台 - 文档智能生成与迭代流程
+
+actor "用户" as User
+participant "前端应用" as FE
+participant "后端服务" as BE
+participant "AI生成引擎 (LLM)" as AI
+database "数据库" as DB
+
+group 一键批量生成文档
+
+    User -> FE: 在“需求分析结果”页面点击“一键生成项目文档”
+    FE -> BE: 发起生成文档请求 (携带项目ID和需求分析结果)
+    BE -> AI: **[异步任务]** 基于需求分析结果，请求生成所有文档
+    note right of BE
+        这是一个耗时操作，前端应显示加载状态。
+        后端可以按阶段生成和保存。
+    end note
+
+    AI --> BE: **阶段一**\n返回项目需求文档(md)\n系统架构图(puml)\n交互流程图(puml)\n业务流程图(puml)
+    BE -> DB: 保存阶段一的4份文档内容
+
+    AI --> BE: **阶段二**\n返回技术规范文档(md)\nAPI设计(md)\n数据库设计(md)
+    BE -> DB: 保存阶段二的3份文档内容
+
+    AI --> BE: **阶段三**\n返回开发流程文档(md)\n测试用例文档(md)\n部署文档(md)
+    BE -> DB: 保存阶段三的3份文档内容
+
+    BE --> FE: 返回成功响应 (所有文档已生成)
+    FE -> User: 提示“所有文档已生成”，并展示文档列表
+
+end
+
+group AI辅助交互式更新文档
+
+    User -> FE: 从文档列表中选择一份文档查看 (例如: API设计)
+    FE -> BE: 请求获取指定文档内容
+    BE -> DB: 查询该文档的最新内容
+    DB --> BE: 返回文档内容
+    BE --> FE: 返回文档内容
+    FE -> User: 渲染文档内容，并显示AI聊天窗口
+
+    User -> FE: 在聊天窗口输入修改指令 (例如：“为登录API增加'验证码'字段”)
+    FE -> BE: 发送更新请求 (携带：文档现有内容 + 用户指令)
+    BE -> AI: 请求根据指令修改文档
+    note right of AI
+        AI需要上下文：
+        1. 当前文档内容
+        2. 用户的修改指令
+        3. (可选) 聊天历史
+    end note
+    AI --> BE: 返回更新后的完整文档内容
+    BE -> DB: 更新数据库中的文档内容 (建议创建新版本)
+    DB --> BE: 确认保存
+    BE --> FE: 返回更新后的文档内容
+    FE -> User: 实时刷新文档视图，显示更新后的内容
+
+end
+
+@enduml

@@ -15,7 +15,16 @@ import type {
 // 创建axios实例
 const api = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 10000,  // 默认10秒超时
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// 创建长时间任务的axios实例
+const longTaskApi = axios.create({
+  baseURL: '/api',
+  timeout: 60000,  // 60秒超时，用于AI生成等长时间任务
   headers: {
     'Content-Type': 'application/json',
   },
@@ -35,8 +44,37 @@ api.interceptors.request.use(
   }
 );
 
+// 为长时间任务API添加相同的拦截器
+longTaskApi.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // 响应拦截器 - 处理通用错误
 api.interceptors.response.use(
+  (response: AxiosResponse<ApiResponse>) => {
+    return response;
+  },
+  (error) => {
+    if (error.response?.status === 401) {
+      // 清除本地token并跳转到登录页
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// 为长时间任务API添加相同的响应拦截器
+longTaskApi.interceptors.response.use(
   (response: AxiosResponse<ApiResponse>) => {
     return response;
   },
@@ -154,6 +192,178 @@ export const systemApi = {
   // 健康检查
   healthCheck: async (): Promise<any> => {
     const response = await axios.get('/health');
+    return response.data;
+  },
+};
+
+// AI相关API
+export const aiApi = {
+  // 分阶段生成文档 - 使用长超时
+  generateStageDocuments: async (projectId: string, stage: number): Promise<any> => {
+    const response = await longTaskApi.post('/ai/generate-stage-documents', {
+      project_id: projectId,
+      stage: stage
+    });
+    return response.data;
+  },
+
+  // AI需求分析 - 使用长超时
+  analyzeRequirement: async (projectId: string, requirement: string): Promise<any> => {
+    const response = await longTaskApi.post('/ai/analyze', {
+      project_id: projectId,
+      requirement: requirement
+    });
+    return response.data;
+  },
+
+  // 获取项目的需求分析结果
+  getProjectAnalysis: async (projectId: string): Promise<any> => {
+    const response = await api.get(`/ai/analysis/project/${projectId}`);
+    return response.data;
+  },
+
+  // 项目AI对话
+  projectChat: async (projectId: string, message: string, context?: string): Promise<any> => {
+    const response = await api.post('/ai/chat', {
+      project_id: projectId,
+      message: message,
+      context: context
+    });
+    return response.data;
+  },
+
+  // 根据需求分析生成阶段文档列表
+  generateStageDocumentList: async (projectId: string, stage: number): Promise<any> => {
+    const response = await api.post('/ai/generate-document-list', {
+      project_id: projectId,
+      stage: stage
+    });
+    return response.data;
+  },
+
+  // 获取AI配置
+  getConfig: async (): Promise<any> => {
+    const response = await api.get('/ai/config');
+    return response.data;
+  },
+
+  // 更新AI配置
+  updateConfig: async (config: any): Promise<any> => {
+    const response = await api.put('/ai/config', config);
+    return response.data;
+  },
+
+  // 测试AI连接
+  testConnection: async (): Promise<any> => {
+    const response = await api.post('/ai/test-connection');
+    return response.data;
+  },
+};
+
+// PUML相关API
+export const pumlApi = {
+  // 获取项目PUML图表列表
+  getProjectPUMLs: async (projectId: string, stage?: number): Promise<any> => {
+    const params = stage ? { stage } : {};
+    const response = await api.get(`/puml/project/${projectId}`, { params });
+    return response.data;
+  },
+
+  // 创建PUML图表
+  createPUML: async (data: {
+    project_id: string;
+    stage: number;
+    diagram_type: string;
+    diagram_name: string;
+    puml_content: string;
+  }): Promise<any> => {
+    const response = await api.post('/puml/create', data);
+    return response.data;
+  },
+
+  // 更新PUML图表
+  updatePUMLDiagram: async (pumlId: string, data: {
+    diagram_name?: string;
+    puml_content?: string;
+  }): Promise<any> => {
+    const response = await api.put(`/puml/${pumlId}`, data);
+    return response.data;
+  },
+
+  // 删除PUML图表
+  deletePUML: async (pumlId: string): Promise<any> => {
+    const response = await api.delete(`/puml/${pumlId}`);
+    return response.data;
+  },
+
+  // 验证PUML语法
+  validatePUML: async (content: string): Promise<any> => {
+    const response = await api.post('/puml/validate', { puml_content: content });
+    return response.data;
+  },
+
+  // 生成PUML图片
+  generateImage: async (content: string): Promise<any> => {
+    const response = await api.post('/puml/generate-image', { puml_content: content });
+    return response.data;
+  },
+
+  // 渲染PUML为图片
+  renderPUML: async (content: string): Promise<string> => {
+    const response = await api.post('/puml/render', { puml_content: content });
+    if (response.data.success) {
+      return response.data.data.url;
+    }
+    throw new Error('渲染失败');
+  },
+};
+
+// 异步任务相关API
+export const asyncTaskApi = {
+  // 启动阶段文档生成任务
+  startStageDocumentGeneration: async (projectId: string, stage: number): Promise<any> => {
+    const response = await api.post('/async/stage-documents', {
+      project_id: projectId,
+      stage: stage
+    });
+    return response.data;
+  },
+
+  // 获取任务状态
+  getTaskStatus: async (taskId: string): Promise<any> => {
+    const response = await api.get(`/async/tasks/${taskId}/status`);
+    return response.data;
+  },
+
+  // 轮询任务状态（支持长轮询）
+  pollTaskStatus: async (taskId: string, timeout: number = 30): Promise<any> => {
+    const response = await api.get(`/async/tasks/${taskId}/poll?timeout=${timeout}`);
+    return response.data;
+  },
+
+  // 获取项目阶段进度
+  getStageProgress: async (projectId: string): Promise<any> => {
+    const response = await api.get(`/async/projects/${projectId}/progress`);
+    return response.data;
+  },
+
+  // 便捷方法：直接使用api.get调用
+  get: async (path: string): Promise<any> => {
+    const response = await api.get(`/async${path}`);
+    return response.data;
+  },
+
+  // 获取阶段文档列表
+  getStageDocuments: async (projectId: string, stage: number): Promise<any> => {
+    const response = await api.get(`/async/projects/${projectId}/stages/${stage}/documents`);
+    return response.data;
+  },
+
+  // 启动完整项目文档生成任务
+  startCompleteProjectDocumentGeneration: async (projectId: string): Promise<any> => {
+    const response = await api.post('/async/complete-project-documents', {
+      project_id: projectId
+    });
     return response.data;
   },
 };

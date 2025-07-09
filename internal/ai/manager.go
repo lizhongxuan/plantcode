@@ -22,6 +22,7 @@ type AIManagerConfig struct {
 	DefaultProvider AIProvider
 	OpenAIConfig    *OpenAIConfig
 	ClaudeConfig    *ClaudeConfig
+	GeminiConfig    *GeminiConfig
 	EnableCache     bool
 	CacheTTL        time.Duration
 }
@@ -149,6 +150,12 @@ func NewAIManager(config AIManagerConfig) (*AIManager, error) {
 		// TODO: 实现Claude客户端
 		// claudeClient := NewClaudeClient(*config.ClaudeConfig)
 		// manager.clients[ProviderClaude] = claudeClient
+	}
+	
+	// 初始化Gemini客户端
+	if config.GeminiConfig != nil {
+		geminiClient := NewGeminiClient(*config.GeminiConfig)
+		manager.clients[ProviderGemini] = geminiClient
 	}
 	
 	// 验证默认提供商是否可用
@@ -441,5 +448,51 @@ func (m *AIManager) ProjectChat(ctx context.Context, message, context string, pr
 		return nil, fmt.Errorf("AI对话失败: %w", err)
 	}
 	
-	return response, nil
+	// 缓存结果
+	if m.cache != nil && err == nil {
+		cacheKey := m.generateCacheKey("chat", targetProvider, message, context)
+		m.cache.Set(cacheKey, response, time.Hour)
+	}
+	
+	return response, err
+}
+
+// GenerateStageDocument 分阶段生成文档
+func (m *AIManager) GenerateStageDocument(ctx context.Context, analysis *RequirementAnalysis, documentType string, provider ...AIProvider) (*DevelopmentDocument, error) {
+	// 确定使用的提供商
+	targetProvider := m.defaultProvider
+	if len(provider) > 0 {
+		targetProvider = provider[0]
+	}
+	
+	// 检查缓存
+	cacheKey := m.generateCacheKey("stage_doc", targetProvider, analysis.ID, documentType)
+	if m.cache != nil {
+		if cached, found := m.cache.Get(cacheKey); found {
+			if doc, ok := cached.(*DevelopmentDocument); ok {
+				return doc, nil
+			}
+		}
+	}
+	
+	// 获取客户端
+	client, err := m.GetClient(targetProvider)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 检查客户端是否支持分阶段文档生成
+	if geminiClient, ok := client.(*GeminiClient); ok {
+		document, err := geminiClient.GenerateStageSpecificDocument(ctx, analysis, documentType)
+		
+		// 缓存结果
+		if m.cache != nil && err == nil {
+			m.cache.Set(cacheKey, document, time.Hour)
+		}
+		
+		return document, err
+	}
+	
+	// 其他客户端暂时使用GenerateDocument方法
+	return m.GenerateDocument(ctx, analysis, targetProvider)
 } 

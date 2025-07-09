@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -511,31 +513,99 @@ func (c *OpenAIClient) buildDocumentPrompt(analysis *RequirementAnalysis) string
 
 // parseAnalysisResponse 解析需求分析响应
 func (c *OpenAIClient) parseAnalysisResponse(content, originalText string) (*RequirementAnalysis, error) {
-	// 提取JSON部分
+	log.Printf("AI原始响应内容长度: %d", len(content))
+	log.Printf("AI原始响应前500字符: %s", func() string {
+		if len(content) > 500 {
+			return content[:500] + "..."
+		}
+		return content
+	}())
+	
 	jsonContent := extractJSON(content)
+	log.Printf("提取的JSON内容长度: %d", len(jsonContent))
+	log.Printf("提取的JSON前500字符: %s", func() string {
+		if len(jsonContent) > 500 {
+			return jsonContent[:500] + "..."
+		}
+		return jsonContent
+	}())
 	
-	var result struct {
-		CoreFunctions     []string          `json:"core_functions"`
-		Roles             []string          `json:"roles"`
-		BusinessProcesses []BusinessProcess `json:"business_processes"`
-		DataEntities      []DataEntity      `json:"data_entities"`
-		MissingInfo       []string          `json:"missing_info"`
-		CompletionScore   float64           `json:"completion_score"`
+	if jsonContent == "" {
+		return nil, fmt.Errorf("响应中没有找到JSON格式的内容")
 	}
-	
+
+	var result struct {
+		CoreFunctions    []string `json:"core_functions"`
+		Roles           []string `json:"roles"`
+		BusinessProcesses []struct {
+			Name        string   `json:"name"`
+			Steps       []string `json:"steps"`
+			Actors      []string `json:"actors"`
+			Description string   `json:"description"`
+		} `json:"business_processes"`
+		DataEntities []struct {
+			Name        string `json:"name"`
+			Attributes  []any  `json:"attributes"`
+			Description string `json:"description"`
+		} `json:"data_entities"`
+		CompletenessScore float64  `json:"completeness_score"`
+		MissingInfo      []string `json:"missing_info"`
+	}
+
 	if err := json.Unmarshal([]byte(jsonContent), &result); err != nil {
+		log.Printf("JSON解析失败，错误: %v", err)
+		log.Printf("尝试解析的JSON内容: %s", jsonContent)
 		return nil, fmt.Errorf("解析JSON失败: %w", err)
 	}
 	
+	// 转换业务流程
+	businessProcesses := make([]BusinessProcess, len(result.BusinessProcesses))
+	for i, bp := range result.BusinessProcesses {
+		businessProcesses[i] = BusinessProcess{
+			Name:        bp.Name,
+			Steps:       bp.Steps,
+			Actors:      bp.Actors,
+			Description: bp.Description,
+		}
+	}
+
+	// 转换数据实体
+	dataEntities := make([]DataEntity, len(result.DataEntities))
+	for i, de := range result.DataEntities {
+		// 暂时直接使用any类型，后续可以改进为更精确的类型转换
+		var attributes []EntityAttribute
+		if de.Attributes != nil {
+			// 将any类型转换为EntityAttribute，但如果失败就使用空数组
+			for _, attr := range de.Attributes {
+				if attrMap, ok := attr.(map[string]interface{}); ok {
+					ea := EntityAttribute{
+						Name:        getStringFromMap(attrMap, "name"),
+						Type:        getStringFromMap(attrMap, "type"),
+						Required:    getBoolFromMap(attrMap, "required"),
+						Description: getStringFromMap(attrMap, "description"),
+					}
+					attributes = append(attributes, ea)
+				}
+			}
+		}
+		
+		dataEntities[i] = DataEntity{
+			Name:        de.Name,
+			Attributes:  attributes,
+			Description: de.Description,
+		}
+	}
+
 	return &RequirementAnalysis{
 		ID:                uuid.New().String(),
+		ProjectID:         "",
 		OriginalText:      originalText,
 		CoreFunctions:     result.CoreFunctions,
 		Roles:             result.Roles,
-		BusinessProcesses: result.BusinessProcesses,
-		DataEntities:      result.DataEntities,
+		BusinessProcesses: businessProcesses,
+		DataEntities:      dataEntities,
 		MissingInfo:       result.MissingInfo,
-		CompletionScore:   result.CompletionScore,
+		CompletionScore:   result.CompletenessScore,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}, nil
@@ -665,17 +735,173 @@ func (c *OpenAIClient) parseProjectChatResponse(content string) (*ProjectChatRes
 
 // extractJSON 从文本中提取JSON部分
 func extractJSON(content string) string {
+	// 尝试寻找完整的JSON对象
+	content = strings.TrimSpace(content)
+	
+	// 如果内容以```开头，可能是markdown格式，需要提取中间的JSON
+	if strings.HasPrefix(content, "```") {
+		lines := strings.Split(content, "\n")
+		var jsonLines []string
+		inJson := false
+		
+		for _, line := range lines {
+			if strings.HasPrefix(line, "```") {
+				if inJson {
+					break // 结束JSON块
+				} else {
+					inJson = true // 开始JSON块
+					continue
+				}
+			}
+			if inJson {
+				jsonLines = append(jsonLines, line)
+			}
+		}
+		
+		if len(jsonLines) > 0 {
+			content = strings.Join(jsonLines, "\n")
+		}
+	}
+	
 	// 寻找JSON开始和结束标记
 	start := strings.Index(content, "{")
 	if start == -1 {
 		return content
 	}
 	
-	// 从后往前找最后一个}
-	end := strings.LastIndex(content, "}")
-	if end == -1 || end <= start {
-		return content
+	// 使用计数器找到匹配的结束括号
+	braceCount := 0
+	end := -1
+	
+	for i := start; i < len(content); i++ {
+		if content[i] == '{' {
+			braceCount++
+		} else if content[i] == '}' {
+			braceCount--
+			if braceCount == 0 {
+				end = i
+				break
+			}
+		}
 	}
 	
-	return content[start : end+1]
+	if end == -1 {
+		// 如果没找到匹配的结束括号，尝试使用原来的方法
+		end = strings.LastIndex(content, "}")
+		if end == -1 || end <= start {
+			return content
+		}
+	}
+	
+	jsonStr := content[start : end+1]
+	
+	// 验证并清理JSON字符串
+	jsonStr = strings.TrimSpace(jsonStr)
+	
+	// 尝试解析以验证JSON格式
+	var temp interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &temp); err != nil {
+		// 如果解析失败，尝试修复常见的JSON错误
+		jsonStr = fixCommonJSONErrors(jsonStr)
+	}
+	
+	return jsonStr
+}
+
+// fixCommonJSONErrors 修复常见的JSON格式错误
+func fixCommonJSONErrors(jsonStr string) string {
+	// 移除可能的BOM字符
+	jsonStr = strings.TrimPrefix(jsonStr, "\uFEFF")
+	
+	// 移除控制字符和不可见字符
+	jsonStr = regexp.MustCompile(`[\x00-\x1f\x7f-\x9f]`).ReplaceAllString(jsonStr, "")
+	
+	// 移除可能的尾随逗号
+	jsonStr = regexp.MustCompile(`,\s*}`).ReplaceAllString(jsonStr, "}")
+	jsonStr = regexp.MustCompile(`,\s*]`).ReplaceAllString(jsonStr, "]")
+	
+	// 修复可能的引号问题 - 智能引号转换为标准引号
+	jsonStr = strings.ReplaceAll(jsonStr, `"`, `"`)
+	jsonStr = strings.ReplaceAll(jsonStr, `"`, `"`)
+	jsonStr = strings.ReplaceAll(jsonStr, `'`, `"`) // 单引号转双引号
+	jsonStr = strings.ReplaceAll(jsonStr, `'`, `"`)
+	
+	// 修复可能的值后多余字符问题
+	// 查找 key:value 后的异常字符
+	jsonStr = regexp.MustCompile(`":\s*"[^"]*"[^,\}\]\s]*`).ReplaceAllStringFunc(jsonStr, func(match string) string {
+		// 找到引号结束的位置，移除后面的无效字符
+		lastQuote := strings.LastIndex(match, `"`)
+		if lastQuote > -1 && lastQuote < len(match)-1 {
+			validPart := match[:lastQuote+1]
+			return validPart
+		}
+		return match
+	})
+	
+	// 修复数字值后的异常字符
+	jsonStr = regexp.MustCompile(`":\s*\d+[^,\}\]\s]*`).ReplaceAllStringFunc(jsonStr, func(match string) string {
+		// 使用正则找到数字结束的位置
+		re := regexp.MustCompile(`":\s*(\d+)`)
+		if matches := re.FindStringSubmatch(match); len(matches) > 1 {
+			return `": ` + matches[1]
+		}
+		return match
+	})
+	
+	// 修复布尔值后的异常字符
+	jsonStr = regexp.MustCompile(`":\s*(true|false)[^,\}\]\s]*`).ReplaceAllStringFunc(jsonStr, func(match string) string {
+		re := regexp.MustCompile(`":\s*(true|false)`)
+		if matches := re.FindStringSubmatch(match); len(matches) > 1 {
+			return `": ` + matches[1]
+		}
+		return match
+	})
+	
+	// 修复数组中的异常字符
+	jsonStr = regexp.MustCompile(`\[[^\]]*\]`).ReplaceAllStringFunc(jsonStr, func(arrayMatch string) string {
+		// 清理数组内容
+		return regexp.MustCompile(`"[^"]*"[^",\]]*`).ReplaceAllStringFunc(arrayMatch, func(elementMatch string) string {
+			lastQuote := strings.LastIndex(elementMatch, `"`)
+			if lastQuote > 0 && lastQuote < len(elementMatch)-1 {
+				return elementMatch[:lastQuote+1]
+			}
+			return elementMatch
+		})
+	})
+	
+	// 移除多余的换行符和空格
+	lines := strings.Split(jsonStr, "\n")
+	var cleanLines []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			cleanLines = append(cleanLines, line)
+		}
+	}
+	jsonStr = strings.Join(cleanLines, " ")
+	
+	// 最后再次尝试移除格式错误
+	jsonStr = strings.TrimSpace(jsonStr)
+	
+	return jsonStr
+}
+
+// getStringFromMap 从map中安全获取字符串值
+func getStringFromMap(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+// getBoolFromMap 从map中安全获取布尔值
+func getBoolFromMap(m map[string]interface{}, key string) bool {
+	if v, ok := m[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
 } 
