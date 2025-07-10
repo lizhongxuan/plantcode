@@ -72,6 +72,16 @@ func (h *Handlers) LoginUser(w http.ResponseWriter, r *http.Request) {
 	utils.WriteSuccessResponse(w, response, "登录成功")
 }
 
+// ValidateToken 验证Token有效性
+func (h *Handlers) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	// 从上下文获取用户（通过JWT认证中间件设置）
+	user := MustGetUserFromContext(r.Context())
+	
+	// 如果能走到这里，说明token是有效的
+	// 返回用户信息
+	utils.WriteSuccessResponse(w, user, "Token验证成功")
+}
+
 // GetCurrentUser 获取当前用户信息
 func (h *Handlers) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	user := MustGetUserFromContext(r.Context())
@@ -230,12 +240,18 @@ func (h *Handlers) DeleteProject(w http.ResponseWriter, r *http.Request) {
 
 // extractIDFromPath 从URL路径中提取ID
 func extractIDFromPath(path, prefix string) string {
-	if len(path) <= len(prefix) {
+	// 检查路径是否以前缀开头
+	if !strings.HasPrefix(path, prefix) {
 		return ""
 	}
 	
 	// 移除前缀
 	id := path[len(prefix):]
+	
+	// 如果没有ID部分，返回空字符串
+	if id == "" {
+		return ""
+	}
 	
 	// 如果路径后面还有其他部分，只取第一部分
 	if slashIndex := strings.IndexByte(id, '/'); slashIndex != -1 {

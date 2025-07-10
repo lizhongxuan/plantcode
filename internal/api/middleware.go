@@ -234,6 +234,9 @@ func (m *Middlewares) Recovery(next http.Handler) http.Handler {
 // ContentType 内容类型中间件
 func (m *Middlewares) ContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 设置响应Content-Type
+		w.Header().Set("Content-Type", "application/json")
+		
 		// 对于POST、PUT、PATCH请求，检查Content-Type
 		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 			contentType := r.Header.Get("Content-Type")
@@ -250,7 +253,24 @@ func (m *Middlewares) ContentType(next http.Handler) http.Handler {
 // Timeout 超时中间件
 func (m *Middlewares) Timeout(timeout time.Duration) Middleware {
 	return func(next http.Handler) http.Handler {
-		return http.TimeoutHandler(next, timeout, "请求超时")
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+			
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			}()
+			
+			select {
+			case <-done:
+				// 正常完成
+			case <-ctx.Done():
+				// 超时
+				utils.WriteErrorResponse(w, http.StatusRequestTimeout, "请求超时")
+			}
+		})
 	}
 }
 
@@ -259,13 +279,10 @@ func (m *Middlewares) Security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 安全头
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Frame-Options", "deny")
 		w.Header().Set("X-XSS-Protection", "1; mode=block")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		
-		if m.config.IsProduction() {
-			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-		}
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		
 		next.ServeHTTP(w, r)
 	})

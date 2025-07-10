@@ -67,6 +67,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // 清除本地token并跳转到登录页
       localStorage.removeItem('auth_token');
+      
+      // 同时清除zustand store中的认证状态
+      const { useAuthStore } = require('@/store');
+      const clearAuth = useAuthStore.getState().clearAuth;
+      clearAuth();
+      
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -82,6 +88,12 @@ longTaskApi.interceptors.response.use(
     if (error.response?.status === 401) {
       // 清除本地token并跳转到登录页
       localStorage.removeItem('auth_token');
+      
+      // 同时清除zustand store中的认证状态
+      const { useAuthStore } = require('@/store');
+      const clearAuth = useAuthStore.getState().clearAuth;
+      clearAuth();
+      
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -109,6 +121,15 @@ export const authApi = {
     // 保存token到localStorage
     localStorage.setItem('auth_token', loginData.token);
     return loginData;
+  },
+
+  // 验证token有效性
+  validateToken: async (): Promise<User> => {
+    const response = await api.get<ApiResponse<User>>('/auth/validate');
+    if (!response.data.success) {
+      throw new Error(response.data.error || 'Token验证失败');
+    }
+    return response.data.data!;
   },
 
   // 退出登录

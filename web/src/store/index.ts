@@ -51,6 +51,8 @@ export const useAuthStore = create<AuthState>()(
         });
         // 清除localStorage
         localStorage.removeItem('auth_token');
+        // 清除持久化存储
+        localStorage.removeItem('auth-store');
       },
       updateUser: (user) => {
         set((state) => ({

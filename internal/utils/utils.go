@@ -244,7 +244,7 @@ func ParseUUID(s string) (uuid.UUID, error) {
 // GetPaginationParams 获取分页参数
 func GetPaginationParams(r *http.Request) (page, pageSize int) {
 	page = 1
-	pageSize = 20
+	pageSize = 10
 
 	if p := r.URL.Query().Get("page"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
@@ -253,8 +253,12 @@ func GetPaginationParams(r *http.Request) (page, pageSize int) {
 	}
 
 	if ps := r.URL.Query().Get("page_size"); ps != "" {
-		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
-			pageSize = parsed
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 {
+			if parsed > 100 {
+				pageSize = 100
+			} else {
+				pageSize = parsed
+			}
 		}
 	}
 
@@ -263,9 +267,9 @@ func GetPaginationParams(r *http.Request) (page, pageSize int) {
 
 // CalculatePagination 计算分页信息
 func CalculatePagination(page, pageSize int, total int64) PaginationInfo {
-	totalPage := int((total + int64(pageSize) - 1) / int64(pageSize))
-	if totalPage < 1 {
-		totalPage = 1
+	totalPage := 0
+	if total > 0 {
+		totalPage = int((total + int64(pageSize) - 1) / int64(pageSize))
 	}
 
 	return PaginationInfo{
@@ -276,14 +280,55 @@ func CalculatePagination(page, pageSize int, total int64) PaginationInfo {
 	}
 }
 
-// ValidateEmail 简单的邮箱验证
+// ValidateEmail 邮箱验证
 func ValidateEmail(email string) bool {
-	return strings.Contains(email, "@") && strings.Contains(email, ".")
+	if email == "" {
+		return false
+	}
+	
+	// 基本格式检查
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	
+	localPart := parts[0]
+	domain := parts[1]
+	
+	// 检查本地部分和域名部分是否为空
+	if localPart == "" || domain == "" {
+		return false
+	}
+	
+	// 检查域名是否包含点号且不是以点号开头或结尾
+	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return false
+	}
+	
+	// 检查域名各部分不为空
+	domainParts := strings.Split(domain, ".")
+	for _, part := range domainParts {
+		if part == "" {
+			return false
+		}
+	}
+	
+	return true
 }
 
-// SanitizeString 清理字符串（移除前后空格）
+// SanitizeString 清理字符串（移除前后空格、制表符、换行符）
 func SanitizeString(s string) string {
-	return strings.TrimSpace(s)
+	// 先移除前后的空白字符
+	s = strings.TrimSpace(s)
+	// 替换内部的制表符和换行符为空格
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	// 合并多个连续空格为一个
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
+	return s
 }
 
 // IsValidProjectType 验证项目类型
@@ -339,7 +384,7 @@ func ContainsString(slice []string, item string) bool {
 
 // RemoveString 从字符串切片中移除指定字符串
 func RemoveString(slice []string, item string) []string {
-	var result []string
+	result := make([]string, 0)
 	for _, s := range slice {
 		if s != item {
 			result = append(result, s)
@@ -364,8 +409,14 @@ func FormatFileSize(bytes int64) string {
 
 // TruncateString 截断字符串
 func TruncateString(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
 	if len(s) <= maxLen {
 		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
 }

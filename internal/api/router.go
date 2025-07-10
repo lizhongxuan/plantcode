@@ -78,6 +78,12 @@ func (router *Router) SetupRoutes() http.Handler {
 		append(commonMiddlewares, rateLimitMiddleware)...,
 	))
 
+	// 验证token
+	mux.Handle("/api/auth/validate", Apply(
+		http.HandlerFunc(router.handlers.ValidateToken),
+		authMiddlewares...,
+	))
+
 	// ===== 用户管理 =====
 	// 获取当前用户信息
 	mux.Handle("/api/user/profile", Apply(

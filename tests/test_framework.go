@@ -1,15 +1,13 @@
 package tests
 
 import (
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
@@ -34,16 +32,34 @@ func (s *TestSuite) SetupSuite() {
 	s.Config = &config.Config{
 		Env: "test",
 		Database: config.DatabaseConfig{
-			Host:     getEnvOrDefault("TEST_DB_HOST", "localhost"),
-			Port:     getEnvOrDefault("TEST_DB_PORT", "3306"),
-			User:     getEnvOrDefault("TEST_DB_USER", "root"),
-			Password: getEnvOrDefault("TEST_DB_PASSWORD", "lzx234258"),
-			Name:     getEnvOrDefault("TEST_DB_NAME", "aicode_test"),
+			Host:     "localhost",
+			Port:     "3306",
+			User:     "root",
+			Password: "test",
+			Name:     "test_db",
+		},
+		JWT: config.JWTConfig{
+			Secret:    "test-secret-key-for-testing",
+			ExpiresIn: 86400, // 24小时，避免立即过期
+		},
+		AI: config.AIConfig{
+			Provider:     "openai",
+			OpenAIKey:    "test-key",
+			Timeout:      30,
+			MaxRetries:   3,
+			DefaultModel: "gpt-3.5-turbo",
+			MaxTokens:    2048,
+		},
+		CORS: config.CORSConfig{
+			Origins:     []string{"http://localhost:3000"},
+			Methods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			Headers:     []string{"Content-Type", "Authorization"},
+			Credentials: true,
 		},
 	}
 
-	// 初始化测试数据库
-	db, err := gorm.Open(mysql.Open(s.Config.GetDSN()), &gorm.Config{
+	// 使用SQLite内存数据库进行测试
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	s.Require().NoError(err)
@@ -60,6 +76,12 @@ func (s *TestSuite) SetupSuite() {
 		&model.UserAIConfig{},
 	)
 	s.Require().NoError(err)
+
+	// 验证表是否创建成功
+	var tableCount int64
+	result := s.DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tableCount)
+	s.Require().NoError(result.Error)
+	s.Require().True(tableCount > 0, "数据库表创建失败")
 
 	// 创建测试用户
 	s.createTestUser()
@@ -114,7 +136,7 @@ func (s *TestSuite) createTestProject() {
 		UserID:      s.TestUserID,
 		ProjectName: "Test Project",
 		Description: "Test project description",
-		ProjectType: "web",
+		ProjectType: "web_application",
 		Status:      model.ProjectStatusDraft,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
@@ -126,27 +148,12 @@ func (s *TestSuite) createTestProject() {
 
 // cleanupTestData 清理测试数据
 func (s *TestSuite) cleanupTestData() {
-	tables := []string{
-		"async_tasks", "documents", "puml_diagrams", 
-		"requirements", "projects", "users", "user_ai_configs",
-	}
-
-	for _, table := range tables {
-		s.DB.Exec(fmt.Sprintf("DELETE FROM %s WHERE 1=1", table))
-	}
+	// SQLite内存数据库会自动清理，这里留空即可
 }
 
 // AddCleanup 添加清理函数
 func (s *TestSuite) AddCleanup(fn func()) {
 	s.Cleanup = append(s.Cleanup, fn)
-}
-
-// getEnvOrDefault 获取环境变量或默认值
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
 
 // MockAIService 模拟AI服务

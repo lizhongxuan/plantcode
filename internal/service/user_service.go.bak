@@ -344,13 +344,6 @@ func (s *projectService) CreateProject(userID uuid.UUID, req *model.CreateProjec
 
 // GetUserProjects 获取用户项目列表
 func (s *projectService) GetUserProjects(userID uuid.UUID, page, pageSize int) ([]*model.Project, utils.PaginationInfo, error) {
-	// 验证和修正分页参数
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 10
-	}
 	projects, total, err := s.repo.GetProjectsByUserID(userID, page, pageSize)
 	if err != nil {
 		return nil, utils.PaginationInfo{}, fmt.Errorf("获取项目列表失败: %w", err)
@@ -464,9 +457,6 @@ func (s *projectService) validateProjectInput(req *model.CreateProjectRequest) e
 	}
 
 	// 验证描述
-	if len(req.Description) < 1 {
-		return fmt.Errorf("项目描述不能为空")
-	}
 	if len(req.Description) > 1000 {
 		return fmt.Errorf("项目描述不能超过1000个字符")
 	}

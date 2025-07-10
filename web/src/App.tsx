@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/store';
+import { authApi } from '@/services/api';
 import PrivateRoute from '@/components/PrivateRoute';
 import MainLayout from '@/components/layout/MainLayout';
 import Login from '@/pages/Login';
@@ -15,7 +16,49 @@ import Settings from '@/pages/Settings';
 import ProjectDetail from '@/pages/ProjectDetail';
 
 const App: React.FC = () => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, setAuth, clearAuth } = useAuthStore();
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    const validateAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      
+      if (!token) {
+        // 没有token，清除认证状态
+        clearAuth();
+        setIsInitializing(false);
+        return;
+      }
+
+      try {
+        // 验证token的有效性
+        const user = await authApi.validateToken();
+        // token有效，设置认证状态
+        setAuth(user, token);
+      } catch (error) {
+        // token无效，清除认证状态
+        console.warn('Token validation failed:', error);
+        clearAuth();
+        localStorage.removeItem('auth_token');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    validateAuth();
+  }, [setAuth, clearAuth]);
+
+  // 如果正在初始化，显示加载状态
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">正在加载...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
