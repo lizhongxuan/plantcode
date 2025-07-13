@@ -36,6 +36,7 @@ import {
 } from '@ant-design/icons';
 import { pumlApi } from '@/services/api';
 import AIAssistant from '@/components/AIAssistant';
+import OnlinePUMLEditor from './OnlinePUMLEditor';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -557,55 +558,13 @@ business --> cache
           </Space>
 
           {/* 编辑器区域 */}
-          <div style={{ border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
-            <Row style={{ height: '400px' }}>
-              {/* 代码编辑区 */}
-              {(editorMode === 'edit' || editorMode === 'split') && (
-                <Col span={editorMode === 'split' ? 12 : 24} style={{ height: '100%' }}>
-                  <TextArea
-                    ref={textareaRef}
-                    value={pumlContent}
-                    onChange={(e) => setPumlContent(e.target.value)}
-                    placeholder="输入PUML代码..."
-                    style={{ 
-                      height: '100%', 
-                      border: 'none',
-                      resize: 'none',
-                      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, source-code-pro, monospace'
-                    }}
-                  />
-                </Col>
-              )}
-
-              {/* 预览区 */}
-              {(editorMode === 'preview' || editorMode === 'split') && (
-                <Col 
-                  span={editorMode === 'split' ? 12 : 24} 
-                  style={{ 
-                    height: '100%', 
-                    borderLeft: editorMode === 'split' ? '1px solid #d9d9d9' : 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: '#fafafa'
-                  }}
-                >
-                  {previewUrl ? (
-                    <img 
-                      src={previewUrl} 
-                      alt="PUML预览" 
-                      style={{ maxWidth: '100%', maxHeight: '100%' }}
-                    />
-                  ) : (
-                    <div style={{ textAlign: 'center', color: '#999' }}>
-                      <PictureOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
-                      <br />
-                      <Text type="secondary">点击"生成预览"查看图表</Text>
-                    </div>
-                  )}
-                </Col>
-              )}
-            </Row>
+          <div style={{ height: '500px', border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
+            <OnlinePUMLEditor
+              value={pumlContent}
+              onChange={setPumlContent}
+              mode={editorMode}
+              readOnly={editorMode === 'preview'}
+            />
           </div>
         </Space>
       </Modal>
@@ -615,27 +574,20 @@ business --> cache
         title={currentDiagram ? `预览：${currentDiagram.diagram_name}` : 'PUML预览'}
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
-        width={800}
+        width={900}
         footer={[
           <Button key="close" onClick={() => setPreviewVisible(false)}>
             关闭
           </Button>
         ]}
       >
-        <div style={{ textAlign: 'center' }}>
-          {previewUrl ? (
-            <img 
-              src={previewUrl} 
-              alt="PUML预览" 
-              style={{ maxWidth: '100%', maxHeight: '600px' }}
-            />
-          ) : (
-            <div style={{ padding: '40px', color: '#999' }}>
-              <PictureOutlined style={{ fontSize: '48px', marginBottom: '16px' }} />
-              <br />
-              <Text type="secondary">预览生成中...</Text>
-            </div>
-          )}
+        <div style={{ height: '500px', border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
+          <OnlinePUMLEditor
+            value={pumlContent}
+            onChange={() => {}}
+            mode="preview"
+            readOnly
+          />
         </div>
       </Modal>
     </div>

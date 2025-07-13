@@ -323,17 +323,17 @@ export const pumlApi = {
     return response.data;
   },
 
-  // 生成PUML图片
+  // 生成PUML图片（已统一为SVG渲染）
   generateImage: async (content: string): Promise<any> => {
-    const response = await api.post('/puml/generate-image', { puml_content: content });
-    return response.data;
+    const response = await api.post('/puml/render-online', { code: content });
+    return { success: response.data.success, data: { svg: response.data.imageData } };
   },
 
-  // 渲染PUML为图片
+  // 渲染PUML为图片（已统一为SVG渲染）
   renderPUML: async (content: string): Promise<string> => {
-    const response = await api.post('/puml/render', { puml_content: content });
+    const response = await api.post('/puml/render-online', { code: content });
     if (response.data.success) {
-      return response.data.data.url;
+      return response.data.imageData;
     }
     throw new Error('渲染失败');
   },

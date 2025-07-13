@@ -74,6 +74,8 @@
   display: flex;
   flex-grow: 1;
   overflow: hidden;
+  height: 100%;
+  min-height: 400px;
 }
 
 .ope-panel {
@@ -163,4 +165,124 @@
   border-radius: 4px;
   z-index: 10;
   box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+/* 嵌入模式样式 */
+.online-puml-editor-embed {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.online-puml-editor-embed .online-puml-editor-container {
+  height: 100%;
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* 分屏模式优化 */
+.ope-split-row {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  min-height: 400px;
+}
+
+.ope-split-row > div {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.ope-split-row > div:first-child {
+  border-right: 1px solid #e8e8e8;
+}
+
+/* 修复面板高度问题 */
+.ope-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.ope-panel.ope-editor-panel {
+  border-right: none;
+}
+
+/* 优化文本域样式 */
+.ope-textarea {
+  flex-grow: 1;
+  background-color: var(--primary-bg) !important;
+  border: none !important;
+  color: var(--text-color);
+  padding: 15px;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  outline: none !important;
+  min-height: 300px;
+  width: 100%;
+  transition: none !important;
+  animation: none !important;
+  box-shadow: none !important;
+}
+
+/* 禁用focus时的所有过渡和闪烁效果 */
+.ope-textarea:focus {
+  background-color: var(--primary-bg) !important;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+/* 禁用active状态 */
+.ope-textarea:active {
+  background-color: var(--primary-bg) !important;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+/* 禁用文本选择时的默认高亮闪烁效果 */
+.ope-textarea::selection {
+  background-color: #264f78;
+  color: #ffffff;
+}
+
+.ope-textarea::-moz-selection {
+  background-color: #264f78;
+  color: #ffffff;
+}
+
+/* 优化预览区域 */
+.ope-svg-preview {
+  flex-grow: 1;
+  padding: 15px;
+  overflow: auto;
+  background-color: #fff;
+  min-height: 300px;
+  width: 100%;
+}
+
+.ope-svg-preview svg {
+  max-width: 100%;
+  height: auto;
+  min-height: 200px;
+  display: block;
 } 

@@ -2,13 +2,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './OnlinePUMLEditor.css';
 
 interface OnlinePUMLEditorProps {
-  initialCode: string;
-  onClose: () => void;
-  onSave: (newCode: string) => void;
+  value?: string;
+  onChange?: (val: string) => void;
+  initialCode?: string;
+  onClose?: () => void;
+  onSave?: (val: string) => void;
+  readOnly?: boolean;
+  mode?: 'edit' | 'preview' | 'split';
 }
 
-const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClose, onSave }) => {
-  const [pumlCode, setPumlCode] = useState(initialCode);
+const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, initialCode, onClose, onSave, readOnly, mode = 'split' }) => {
+  const isControlled = typeof value === 'string' && typeof onChange === 'function';
+  const [pumlCode, setPumlCode] = useState(initialCode || value || '');
   const [svgContent, setSvgContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -41,8 +46,8 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClos
   }, [pumlCode]);
 
   const handleSave = () => {
-    onSave(pumlCode);
-    onClose();
+    if (onSave) onSave(pumlCode);
+    if (onClose) onClose();
   };
   
   // Initial render
@@ -71,7 +76,7 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClos
         const editor = editorRef.current;
         if (!editor) return;
 
-        const lines = editor.value.split('\\n');
+        const lines = editor.value.split('\n');
         if (lineNumber > 0 && lineNumber <= lines.length) {
             let charPosition = 0;
             for (let i = 0; i < lineNumber - 1; i++) {
@@ -79,10 +84,11 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClos
             }
             
             editor.focus();
+            // 选中整行代码以显示高亮
             editor.setSelectionRange(charPosition, charPosition + lines[lineNumber - 1].length);
 
             // Scroll to the selection
-            const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
+            const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
             const scrollTop = Math.max(0, (lineNumber - 5) * lineHeight);
             editor.scrollTop = scrollTop;
         }
@@ -93,11 +99,21 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClos
         if (!editor) return;
 
         const code = editor.value;
-        const lines = code.split('\\n');
+        const lines = code.split('\n');
         const searchName = elementName.toLowerCase().trim();
 
         if (!searchName) return;
 
+        // Try exact match first
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].toLowerCase().trim();
+            if (line === searchName || line.includes(`"${searchName}"`) || line.includes(`'${searchName}'`)) {
+                jumpToLine(i + 1);
+                return;
+            }
+        }
+        
+        // Then try partial match
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].toLowerCase();
             if (line.includes(searchName)) {
@@ -108,97 +124,167 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ initialCode, onClos
     };
 
     const extractElementName = (element: Element): string => {
+        // Try to get text content from the element
         let name = element.textContent?.trim() || '';
-        if (!name && element.querySelector('text')) {
-            name = element.querySelector('text')!.textContent?.trim() || '';
+        
+        // If no text content, try to find text elements within
+        if (!name) {
+            const textEl = element.querySelector('text');
+            if (textEl) {
+                name = textEl.textContent?.trim() || '';
+            }
         }
+        
+        // If still no name, try to get title or id
+        if (!name) {
+            name = element.getAttribute('title') || element.getAttribute('id') || '';
+        }
+        
         return name;
     };
 
     const previewEl = previewRef.current;
-    if (!previewEl || !svgContent) return;
+    if (!previewEl || !svgContent || mode === 'edit') return;
     
-    // Clear previous content and listeners by re-rendering
-    previewEl.innerHTML = svgContent;
+    // Wait for the dangerouslySetInnerHTML to render
+    const timeoutId = setTimeout(() => {
+      const svg = previewEl.querySelector('svg');
+      if (!svg) return;
 
-    const svg = previewEl.querySelector('svg');
-    if (!svg) return;
+      // Select clickable elements
+      const clickableElements = svg.querySelectorAll('text, rect, ellipse, circle, polygon, path, g[class*="cluster"], g[class*="node"]');
+      
+      const clickHandler = (event: Event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          
+          const elementName = extractElementName(event.currentTarget as Element);
+          console.log('Clicked element:', elementName); // Debug log
+          if (elementName) {
+              jumpToCodeElement(elementName);
+          }
+      };
 
-    const clickableElements = svg.querySelectorAll('text, rect, ellipse, circle, polygon, path, g');
-    
-    const clickHandler = (event: Event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        const elementName = extractElementName(event.currentTarget as Element);
-        if (elementName) {
-            jumpToCodeElement(elementName);
-        }
-    };
+      const mouseEnterHandler = (event: Event) => {
+        const target = event.currentTarget as SVGElement;
+        target.style.opacity = '0.7';
+        target.style.cursor = 'pointer';
+      };
 
-    const mouseEnterHandler = (event: Event) => {
-      const target = event.currentTarget as SVGElement;
-      target.style.opacity = '0.7';
-    };
+      const mouseLeaveHandler = (event: Event) => {
+        const target = event.currentTarget as SVGElement;
+        target.style.opacity = '1';
+      };
 
-    const mouseLeaveHandler = (event: Event) => {
-      const target = event.currentTarget as SVGElement;
-      target.style.opacity = '1';
-    };
+      // Add event listeners to all clickable elements
+      clickableElements.forEach(element => {
+          element.addEventListener('click', clickHandler);
+          element.addEventListener('mouseenter', mouseEnterHandler);
+          element.addEventListener('mouseleave', mouseLeaveHandler);
+      });
 
-    clickableElements.forEach(element => {
-        (element as HTMLElement).style.cursor = 'pointer';
-        element.addEventListener('click', clickHandler);
-        element.addEventListener('mouseenter', mouseEnterHandler);
-        element.addEventListener('mouseleave', mouseLeaveHandler);
-    });
+      // Cleanup function
+      return () => {
+        clickableElements.forEach(element => {
+          element.removeEventListener('click', clickHandler);
+          element.removeEventListener('mouseenter', mouseEnterHandler);
+          element.removeEventListener('mouseleave', mouseLeaveHandler);
+        });
+      };
+    }, 100);
 
     return () => {
-      clickableElements.forEach(element => {
-        element.removeEventListener('click', clickHandler);
-        element.removeEventListener('mouseenter', mouseEnterHandler);
-        element.removeEventListener('mouseleave', mouseLeaveHandler);
-      });
+      clearTimeout(timeoutId);
     };
-  }, [svgContent]);
+  }, [svgContent, mode]);
+
+  useEffect(() => {
+    if (isControlled && typeof value === 'string') {
+      setPumlCode(value);
+    }
+  }, [value, isControlled]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (isControlled && onChange) {
+      onChange(e.target.value);
+    } else {
+      setPumlCode(e.target.value);
+    }
+  };
 
   return (
-    <div className="online-puml-editor-modal">
+    <div className={onClose ? "online-puml-editor-modal" : "online-puml-editor-embed"}>
       <div className="online-puml-editor-container">
-        <header className="ope-header">
-          <h1>PlantUML 在线编辑器</h1>
-          <div>
-            <button onClick={handleSave} className="ope-button ope-save-btn">保存并关闭</button>
-            <button onClick={onClose} className="ope-close-btn">&times;</button>
-          </div>
-        </header>
+        {onClose && (
+          <header className="ope-header">
+            <h1>PlantUML 在线编辑器</h1>
+            <div>
+              {onSave && <button onClick={handleSave} className="ope-button ope-save-btn">保存并关闭</button>}
+              <button onClick={onClose} className="ope-close-btn">&times;</button>
+            </div>
+          </header>
+        )}
         <main className="ope-main">
-          <div className="ope-panel ope-editor-panel">
-            <div className="ope-panel-header">
-              <h2>PUML 代码</h2>
-              <button onClick={handleRender} disabled={isLoading} className="ope-button">
-                {isLoading ? '渲染中...' : '渲染图表 (Ctrl+Enter)'}
-              </button>
+          {mode === 'edit' && (
+            <div className="ope-panel ope-editor-panel">
+              <div className="ope-panel-header">
+                <h2>PUML 代码</h2>
+              </div>
+              <textarea
+                ref={editorRef}
+                value={isControlled ? value : pumlCode}
+                onChange={handleInputChange}
+                className="ope-textarea"
+                placeholder="输入 PlantUML 代码..."
+                readOnly={readOnly}
+              />
             </div>
-            <textarea
-              ref={editorRef}
-              value={pumlCode}
-              onChange={(e) => setPumlCode(e.target.value)}
-              className="ope-textarea"
-              placeholder="输入 PlantUML 代码..."
-            />
-          </div>
-          <div className="ope-panel ope-preview-panel">
-            <div className="ope-panel-header">
-              <h2>预览</h2>
+          )}
+          {mode === 'preview' && (
+            <div className="ope-panel ope-preview-panel">
+              <div className="ope-panel-header">
+                <h2>预览</h2>
+              </div>
+              {error && <div className="ope-error-display">{error}</div>}
+              <div
+                ref={previewRef}
+                className="ope-svg-preview"
+                dangerouslySetInnerHTML={{ __html: svgContent }}
+              />
             </div>
-            {error && <div className="ope-error-display">{error}</div>}
-            <div
-              ref={previewRef}
-              className="ope-svg-preview"
-              dangerouslySetInnerHTML={{ __html: svgContent }}
-            />
-          </div>
+          )}
+          {mode === 'split' && (
+            <div className="ope-split-row">
+              <div>
+                <div className="ope-panel ope-editor-panel">
+                  <div className="ope-panel-header">
+                    <h2>PUML 代码</h2>
+                  </div>
+                  <textarea
+                    ref={editorRef}
+                    value={isControlled ? value : pumlCode}
+                    onChange={handleInputChange}
+                    className="ope-textarea"
+                    placeholder="输入 PlantUML 代码..."
+                    readOnly={readOnly}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="ope-panel ope-preview-panel">
+                  <div className="ope-panel-header">
+                    <h2>预览</h2>
+                  </div>
+                  {error && <div className="ope-error-display">{error}</div>}
+                  <div
+                    ref={previewRef}
+                    className="ope-svg-preview"
+                    dangerouslySetInnerHTML={{ __html: svgContent }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

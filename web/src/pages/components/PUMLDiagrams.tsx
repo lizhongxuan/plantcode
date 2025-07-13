@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/services/api';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import Input from '@/components/ui/Input';
 import { 
   Workflow, 
   FileCode, 
@@ -37,6 +39,11 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
   const [diagramToEdit, setDiagramToEdit] = useState<PUMLDiagram | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newDiagramName, setNewDiagramName] = useState('');
+  const [newDiagramCode, setNewDiagramCode] = useState('@startuml\n\n@enduml');
+  const [isCreating, setIsCreating] = useState(false);
+  const [editorMode, setEditorMode] = useState<'edit' | 'preview' | 'split'>('split');
 
   const loadDiagrams = useCallback(async () => {
     try {
@@ -63,49 +70,16 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     loadDiagrams();
   }, [loadDiagrams]);
 
-  const renderPreview = useCallback(async (pumlCode: string) => {
-    if (!pumlCode.trim()) {
-      setSelectedDiagramImage('');
-      return;
-    }
-    setIsPreviewLoading(true);
-    try {
-      // Use the existing /render endpoint which returns a blob
-      const response = await api.post('/api/puml/render', {
-        puml_code: pumlCode,
-        format: 'png',
-      }, { responseType: 'blob' });
-      
-      const blob = new Blob([response.data], { type: 'image/png' });
-      const imageUrl = URL.createObjectURL(blob);
-      
-      // Clean up previous blob URL
-      if (selectedDiagramImage) {
-        URL.revokeObjectURL(selectedDiagramImage);
-      }
-      
-      setSelectedDiagramImage(imageUrl);
-    } catch (err) {
-      console.error('预览渲染失败:', err);
-      setSelectedDiagramImage(''); // Clear image on error
-    } finally {
-      setIsPreviewLoading(false);
-    }
-  }, [selectedDiagramImage]);
+  // 移除旧的renderPreview和selectedDiagramImage逻辑
 
   useEffect(() => {
-    if (selectedDiagram) {
-      renderPreview(selectedDiagram.puml_content);
-    } else {
-      setSelectedDiagramImage('');
-    }
     // Cleanup function to revoke URL on component unmount
     return () => {
       if (selectedDiagramImage) {
         URL.revokeObjectURL(selectedDiagramImage);
       }
     };
-  }, [selectedDiagram, renderPreview]);
+  }, [selectedDiagramImage]);
 
   
   const handleOpenOnlineEditor = (diagram: PUMLDiagram) => {
@@ -143,6 +117,35 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     }
   };
 
+  const handleOpenCreateModal = () => {
+    setNewDiagramName('');
+    setNewDiagramCode('@startuml\n\n@enduml');
+    setIsCreateModalOpen(true);
+  };
+  const handleCloseCreateModal = () => {
+    setIsCreateModalOpen(false);
+  };
+  const handleCreateDiagram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDiagramName.trim() || !newDiagramCode.trim()) return;
+    setIsCreating(true);
+    try {
+      const response = await api.post(`/api/puml/create`, {
+        project_id: projectId,
+        diagram_name: newDiagramName,
+        puml_content: newDiagramCode,
+      });
+      if (response.data.success) {
+        setIsCreateModalOpen(false);
+        loadDiagrams();
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || '新建图表失败');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const getDiagramTypeLabel = (type: string) => {
     switch (type) {
       case 'architecture': return '系统架构图';
@@ -173,7 +176,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     <div className="puml-diagrams-container p-4 h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">PUML 图表</h2>
-        {/* Placeholder for future global actions */}
+        <Button onClick={handleOpenCreateModal} variant="primary">新建PUML图表</Button>
       </div>
       {diagrams.length === 0 ? (
         <div className="text-center py-10 bg-gray-800 rounded-lg">
@@ -212,17 +215,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
                   </div>
                 </div>
                 <div className="flex-grow bg-white rounded flex items-center justify-center p-2 min-h-0">
-                  {isPreviewLoading ? (
-                    <div>正在生成预览...</div>
-                  ) : selectedDiagramImage ? (
-                    <img 
-                      src={selectedDiagramImage}
-                      alt={selectedDiagram.diagram_name}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <div>无法生成预览。</div>
-                  )}
+                  <OnlinePUMLEditor value={selectedDiagram.puml_content} onChange={() => {}} readOnly />
                 </div>
               </>
             ) : (
@@ -242,6 +235,39 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
             handleSaveChanges(diagramToEdit.diagram_id, newCode);
           }}
         />
+      )}
+
+      {isCreateModalOpen && (
+        <Modal visible={isCreateModalOpen} onClose={handleCloseCreateModal} width={900} bodyStyle={{ padding: 0, background: '#fff', borderRadius: 12, minHeight: 600, maxHeight: '80vh', overflow: 'auto' }}>
+          <form onSubmit={handleCreateDiagram}>
+            <div style={{ padding: 32 }}>
+              {/* 表单区 */}
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ fontWeight: 600, fontSize: 16, display: 'block', marginBottom: 8 }}>图表名称</label>
+                <Input value={newDiagramName} onChange={e => setNewDiagramName(e.target.value)} placeholder="请输入图表名称" required style={{ width: '100%', height: 40, borderRadius: 8, fontSize: 16, marginBottom: 16 }} />
+                {/* 类型选择可扩展 */}
+              </div>
+              {/* 显示模式切换区 */}
+              <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+                <span style={{ fontWeight: 500, fontSize: 15 }}>显示模式：</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button type={editorMode === 'edit' ? 'primary' : 'default'} onClick={() => setEditorMode('edit')} style={{ borderRadius: 20, fontWeight: 500 }}>纯编辑</Button>
+                  <Button type={editorMode === 'preview' ? 'primary' : 'default'} onClick={() => setEditorMode('preview')} style={{ borderRadius: 20, fontWeight: 500 }}>纯预览</Button>
+                  <Button type={editorMode === 'split' ? 'primary' : 'default'} onClick={() => setEditorMode('split')} style={{ borderRadius: 20, fontWeight: 500 }}>分屏显示</Button>
+                </div>
+              </div>
+              {/* 分屏区/编辑区/预览区 */}
+              <div style={{ height: 400, display: 'flex', flexDirection: window.innerWidth < 800 ? 'column' : 'row', gap: 24, background: '#fafbfc', borderRadius: 10, boxShadow: '0 2px 8px #eee', marginBottom: 32, padding: 16 }}>
+                <OnlinePUMLEditor value={newDiagramCode} onChange={setNewDiagramCode} mode={editorMode} />
+              </div>
+              {/* 按钮区 */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, marginTop: 24 }}>
+                <Button type="button" onClick={handleCloseCreateModal} variant="outline" style={{ borderRadius: 8, fontWeight: 500 }}>取消</Button>
+                <Button type="submit" disabled={isCreating} variant="primary" style={{ borderRadius: 8, fontWeight: 500 }}>{isCreating ? '保存中...' : '保存'}</Button>
+              </div>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

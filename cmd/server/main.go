@@ -19,9 +19,9 @@ import (
 func main() {
 	// 加载配置
 	cfg := config.Load()
-	
+
 	log.Printf("启动AI开发平台服务器 [环境: %s] [端口: %s]", cfg.Env, cfg.Port)
-	
+
 	// 初始化数据库
 	db, err := repository.NewDatabase(cfg)
 	if err != nil {
@@ -32,7 +32,7 @@ func main() {
 			log.Printf("关闭数据库连接失败: %v", err)
 		}
 	}()
-	
+
 	// 在开发环境下创建数据表
 	if cfg.IsDevelopment() {
 		if err := db.CreateTables(); err != nil {
@@ -40,17 +40,11 @@ func main() {
 		}
 		log.Println("数据表初始化完成")
 	}
-	
-	// 执行数据库迁移（所有环境）
-	if err := db.RunMigrations(); err != nil {
-		log.Printf("数据库迁移失败: %v", err)
-		// 迁移失败不是致命错误，继续启动服务
-	}
-	
+
 	// 初始化仓库
 	repo := repository.NewMySQLRepository(db)
 	aiRepo := repository.NewAIRepository(db.MySQL)
-	
+
 	// 初始化AI管理器
 	aiManagerConfig := ai.AIManagerConfig{
 		DefaultProvider: ai.AIProvider(cfg.AI.DefaultProvider),
@@ -62,7 +56,7 @@ func main() {
 		EnableCache: cfg.AI.EnableCache,
 		CacheTTL:    cfg.AI.CacheTTL,
 	}
-	
+
 	aiManager, err := ai.NewAIManager(aiManagerConfig)
 	if err != nil {
 		log.Printf("AI管理器初始化失败，将以有限功能模式运行: %v", err)
@@ -72,21 +66,21 @@ func main() {
 			EnableCache:     false,
 		})
 	}
-	
+
 	// 初始化服务
 	userService := service.NewUserService(repo, cfg)
 	projectService := service.NewProjectService(repo)
 	aiService := service.NewAIService(aiManager, aiRepo, repo.(*repository.MySQLRepository))
-	
+
 	// 初始化PUML渲染服务
 	pumlService := service.NewPUMLService(&cfg.PUML)
-	
+
 	// 初始化异步任务服务
 	asyncTaskService := service.NewAsyncTaskService(repo, aiService, aiManager)
-	
+
 	// 初始化路由器
 	router := api.NewRouter(cfg, userService, projectService, aiService, pumlService, asyncTaskService)
-	
+
 	// 创建HTTP服务器
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -95,7 +89,7 @@ func main() {
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	
+
 	// 启动服务器（非阻塞）
 	go func() {
 		log.Printf("服务器启动在端口 :%s", cfg.Port)
@@ -103,22 +97,22 @@ func main() {
 			log.Fatalf("服务器启动失败: %v", err)
 		}
 	}()
-	
+
 	// 等待中断信号优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	
+
 	log.Println("正在关闭服务器...")
-	
+
 	// 设置关闭超时
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	// 优雅关闭服务器
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("服务器强制关闭: %v", err)
 	} else {
 		log.Println("服务器已优雅关闭")
 	}
-} 
+}
