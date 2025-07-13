@@ -53,14 +53,14 @@ func main() {
 	
 	// 初始化AI管理器
 	aiManagerConfig := ai.AIManagerConfig{
-		DefaultProvider: ai.ProviderOpenAI,
+		DefaultProvider: ai.AIProvider(cfg.AI.DefaultProvider),
 		OpenAIConfig: &ai.OpenAIConfig{
-			APIKey:  cfg.AI.OpenAIKey,
+			APIKey:  cfg.AI.OpenAIConfig.APIKey,
 			BaseURL: os.Getenv("OPENAI_BASE_URL"),
-			Model:   cfg.AI.DefaultModel,
+			Model:   cfg.AI.OpenAIConfig.DefaultModel,
 		},
-		EnableCache: true,
-		CacheTTL:    time.Hour,
+		EnableCache: cfg.AI.EnableCache,
+		CacheTTL:    cfg.AI.CacheTTL,
 	}
 	
 	aiManager, err := ai.NewAIManager(aiManagerConfig)
@@ -79,7 +79,7 @@ func main() {
 	aiService := service.NewAIService(aiManager, aiRepo, repo.(*repository.MySQLRepository))
 	
 	// 初始化PUML渲染服务
-	pumlService := service.NewPUMLService("")
+	pumlService := service.NewPUMLService(&cfg.PUML)
 	
 	// 初始化异步任务服务
 	asyncTaskService := service.NewAsyncTaskService(repo, aiService, aiManager)

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"ai-dev-platform/internal/model"
 	"ai-dev-platform/internal/service"
+	"ai-dev-platform/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -32,9 +34,9 @@ func NewPUMLHandlers(pumlService *service.PUMLService, aiService *service.AIServ
 func (h *PUMLHandlers) RenderPUML(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PUMLCode string `json:"puml_code"`
-		Format   string `json:"format"`   // png, svg, txt
-		Theme    string `json:"theme"`    // 主题
-		DPI      int    `json:"dpi"`      // DPI设置
+		Format   string `json:"format"` // png, svg, txt
+		Theme    string `json:"theme"`  // 主题
+		DPI      int    `json:"dpi"`    // DPI设置
 		UseCache bool   `json:"use_cache"`
 	}
 
@@ -157,8 +159,8 @@ func (h *PUMLHandlers) PreviewPUML(w http.ResponseWriter, r *http.Request) {
 
 	if req.ReturnType == "base64" {
 		// 返回base64编码的图片
-		response["data"] = fmt.Sprintf("data:image/%s;base64,%s", 
-			result.Format, 
+		response["data"] = fmt.Sprintf("data:image/%s;base64,%s",
+			result.Format,
 			encodeBase64(result.ImageData))
 	} else {
 		// 返回图片URL
@@ -215,7 +217,7 @@ func (h *PUMLHandlers) ExportPUML(w http.ResponseWriter, r *http.Request) {
 
 	// 设置下载响应头
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", req.Filename))
-	
+
 	switch req.Format {
 	case "png":
 		w.Header().Set("Content-Type", "image/png")
@@ -235,7 +237,7 @@ func (h *PUMLHandlers) ExportPUML(w http.ResponseWriter, r *http.Request) {
 // GET /api/puml/stats
 func (h *PUMLHandlers) GetPUMLStats(w http.ResponseWriter, r *http.Request) {
 	stats := h.pumlService.GetCacheStats()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -316,11 +318,11 @@ func (h *PUMLHandlers) GetProjectPUMLs(w http.ResponseWriter, r *http.Request) {
 // POST /api/puml/create
 func (h *PUMLHandlers) CreatePUML(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ProjectID    string `json:"project_id"`
-		Stage        int    `json:"stage"`
-		DiagramType  string `json:"diagram_type"`
-		DiagramName  string `json:"diagram_name"`
-		PUMLContent  string `json:"puml_content"`
+		ProjectID   string `json:"project_id"`
+		Stage       int    `json:"stage"`
+		DiagramType string `json:"diagram_type"`
+		DiagramName string `json:"diagram_name"`
+		PUMLContent string `json:"puml_content"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -342,14 +344,14 @@ func (h *PUMLHandlers) CreatePUML(w http.ResponseWriter, r *http.Request) {
 
 	// 创建PUML图表
 	diagram := &model.PUMLDiagram{
-		DiagramID:    uuid.New(),
-		ProjectID:    projectID,
-		DiagramType:  req.DiagramType,
-		DiagramName:  req.DiagramName,
-		PUMLContent:  req.PUMLContent,
-		Stage:        req.Stage,
-		Version:      1,
-		IsValidated:  false,
+		DiagramID:   uuid.New(),
+		ProjectID:   projectID,
+		DiagramType: req.DiagramType,
+		DiagramName: req.DiagramName,
+		PUMLContent: req.PUMLContent,
+		Stage:       req.Stage,
+		Version:     1,
+		IsValidated: false,
 	}
 
 	// 调用AI服务创建PUML图表
@@ -482,7 +484,7 @@ func (h *PUMLHandlers) RenderPUMLImage(w http.ResponseWriter, r *http.Request) {
 	// 调用PUML服务渲染图片
 	renderResult, err := h.pumlService.RenderPUML(req.PUMLContent, &service.RenderOptions{
 		Format:     req.Format,
-		ServerMode: true,  // 确保使用在线服务器模式
+		ServerMode: true, // 确保使用在线服务器模式
 		UseCache:   true,
 	})
 	if err != nil {
@@ -504,7 +506,71 @@ func (h *PUMLHandlers) RenderPUMLImage(w http.ResponseWriter, r *http.Request) {
 }
 
 // GenerateImage 生成PUML图片 (别名方法，兼容前端API)
-// POST /api/puml/generate-image  
+// POST /api/puml/generate-image
 func (h *PUMLHandlers) GenerateImage(w http.ResponseWriter, r *http.Request) {
 	h.RenderPUMLImage(w, r)
-} 
+}
+
+// RenderPUMLOnlineHandler 在线渲染PUML图表（通过POST原始代码）
+func (h *PUMLHandlers) RenderPUMLOnlineHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code string `json:"code"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求数据: "+err.Error())
+		return
+	}
+
+	if strings.TrimSpace(req.Code) == "" {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "PUML代码不能为空")
+		return
+	}
+
+	// 调用服务
+	svgData, err := h.pumlService.RenderPUMLOnline(req.Code)
+	if err != nil {
+		utils.WriteErrorResponse(w, http.StatusInternalServerError, "渲染PUML失败: "+err.Error())
+		return
+	}
+
+	response := map[string]interface{}{
+		"success":   true,
+		"message":   "渲染成功",
+		"imageData": svgData,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// ValidatePUMLHandler 验证PUML语法
+func (h *PUMLHandlers) ValidatePUMLHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code string `json:"code"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的请求数据: "+err.Error())
+		return
+	}
+
+	if strings.TrimSpace(req.Code) == "" {
+		utils.WriteErrorResponse(w, http.StatusBadRequest, "PUML代码不能为空")
+		return
+	}
+
+	// 调用服务
+	result := h.pumlService.ValidatePUML(req.Code)
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": "验证成功",
+		"data":    result,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}

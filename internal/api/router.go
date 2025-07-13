@@ -309,6 +309,13 @@ func (router *Router) SetupRoutes() http.Handler {
 		})),
 	)
 
+	// 在线PUML渲染 (新增)
+	mux.Handle("/api/puml/render-online",
+		http.HandlerFunc(router.methodHandler(map[string]http.HandlerFunc{
+			http.MethodPost: router.pumlHandlers.RenderPUMLOnlineHandler,
+		})),
+	)
+
 	// PUML图片生成 (兼容前端API)
 	mux.Handle("/api/puml/generate-image", 
 		http.HandlerFunc(router.methodHandler(map[string]http.HandlerFunc{

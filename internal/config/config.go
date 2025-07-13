@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 )
 
 // Config 应用配置结构
@@ -23,6 +24,9 @@ type Config struct {
 
 	// AI服务配置
 	AI AIConfig
+
+	// PUML服务配置
+	PUML PUMLConfig
 
 	// CORS配置
 	CORS CORSConfig
@@ -59,13 +63,35 @@ type JWTConfig struct {
 
 // AIConfig AI服务配置
 type AIConfig struct {
-	Provider     string
-	OpenAIKey    string
-	ClaudeKey    string
-	Timeout      int
-	MaxRetries   int
-	DefaultModel string
-	MaxTokens    int
+	DefaultProvider string        `json:"default_provider" mapstructure:"default_provider"`
+	EnableCache     bool          `json:"enable_cache" mapstructure:"enable_cache"`
+	CacheTTL        time.Duration `json:"cache_ttl" mapstructure:"cache_ttl"`
+	OpenAIConfig    *OpenAIConfig `json:"openai_config" mapstructure:"openai_config"`
+	ClaudeConfig    *ClaudeConfig `json:"claude_config" mapstructure:"claude_config"`
+	GeminiConfig    *GeminiConfig `json:"gemini_config" mapstructure:"gemini_config"`
+}
+
+// PUMLConfig puml服务相关配置
+type PUMLConfig struct {
+	ServerURL string `json:"server_url" mapstructure:"server_url"`
+}
+
+// OpenAIConfig OpenAI相关配置
+type OpenAIConfig struct {
+	APIKey       string `json:"api_key" mapstructure:"api_key"`
+	DefaultModel string `json:"default_model" mapstructure:"default_model"`
+}
+
+// ClaudeConfig Claude相关配置
+type ClaudeConfig struct {
+	APIKey       string `json:"api_key" mapstructure:"api_key"`
+	DefaultModel string `json:"default_model" mapstructure:"default_model"`
+}
+
+// GeminiConfig Gemini相关配置
+type GeminiConfig struct {
+	APIKey       string `json:"api_key" mapstructure:"api_key"`
+	DefaultModel string `json:"default_model" mapstructure:"default_model"`
 }
 
 // CORSConfig CORS配置
@@ -75,6 +101,8 @@ type CORSConfig struct {
 	Headers     []string
 	Credentials bool
 }
+
+var cfg *Config
 
 // Load 加载配置
 func Load() *Config {
@@ -109,13 +137,24 @@ func Load() *Config {
 		},
 
 		AI: AIConfig{
-			Provider:     getEnv("AI_PROVIDER", "openai"),
-			OpenAIKey:    getEnv("OPENAI_API_KEY", ""),
-			ClaudeKey:    getEnv("CLAUDE_API_KEY", ""),
-			Timeout:      getEnvInt("AI_TIMEOUT", 30),
-			MaxRetries:   getEnvInt("AI_MAX_RETRIES", 3),
-			DefaultModel: getEnv("AI_DEFAULT_MODEL", "gpt-3.5-turbo"),
-			MaxTokens:    getEnvInt("AI_MAX_TOKENS", 2048),
+			DefaultProvider: "openai",
+			EnableCache:     true,
+			CacheTTL:        60 * time.Minute,
+			OpenAIConfig: &OpenAIConfig{
+				APIKey:       os.Getenv("OPENAI_API_KEY"),
+				DefaultModel: "gpt-4",
+			},
+			ClaudeConfig: &ClaudeConfig{
+				APIKey:       os.Getenv("CLAUDE_API_KEY"),
+				DefaultModel: "claude-2",
+			},
+			GeminiConfig: &GeminiConfig{
+				APIKey:       os.Getenv("GEMINI_API_KEY"),
+				DefaultModel: "gemini-pro",
+			},
+		},
+		PUML: PUMLConfig{
+			ServerURL: "http://localhost:8888",
 		},
 
 		CORS: CORSConfig{
@@ -127,15 +166,24 @@ func Load() *Config {
 	}
 
 	// 验证必要配置
-	if cfg.AI.OpenAIKey == "" && cfg.AI.ClaudeKey == "" {
-		log.Println("警告: 未设置AI服务密钥，部分功能可能无法使用")
-	}
-
-	if cfg.JWT.Secret == "ai-dev-platform-secret" && cfg.Env == "production" {
-		log.Fatal("生产环境必须设置自定义JWT密钥")
-	}
+	validateConfig(cfg)
 
 	return cfg
+}
+
+func validateConfig(cfg *Config) {
+	if cfg.Env == "production" {
+		if cfg.JWT.Secret == "ai-dev-platform-secret" {
+			log.Println("警告: JWT密钥未在生产环境中更改")
+		}
+		if cfg.AI.OpenAIConfig.APIKey == "" && cfg.AI.ClaudeConfig.APIKey == "" && cfg.AI.GeminiConfig.APIKey == "" {
+			log.Println("警告: 在生产环境中未设置任何AI服务密钥")
+		}
+	}
+
+	if cfg.AI.OpenAIConfig.APIKey == "" && cfg.AI.ClaudeConfig.APIKey == "" && cfg.AI.GeminiConfig.APIKey == "" {
+		log.Println("警告: 未设置AI服务密钥，部分功能可能无法使用")
+	}
 }
 
 // getEnv 获取环境变量，如果不存在返回默认值

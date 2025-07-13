@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"ai-dev-platform/internal/config"
 )
 
 // PUMLService PlantUML渲染服务
 type PUMLService struct {
 	serverURL    string
+	onlineRenderURL string
 	httpClient   *http.Client
 	enableCache  bool
 	cache        map[string]*RenderResult // 简单内存缓存
@@ -45,14 +48,16 @@ type ValidationResult struct {
 }
 
 // NewPUMLService 创建新的PUML服务
-func NewPUMLService(serverURL string) *PUMLService {
-	if serverURL == "" {
+func NewPUMLService(cfg *config.PUMLConfig) *PUMLService {
+	pumlServerURL := cfg.ServerURL
+	if pumlServerURL == "" {
 		// 使用官方在线服务器
-		serverURL = "http://www.plantuml.com/plantuml"
+		pumlServerURL = "http://www.plantuml.com/plantuml"
 	}
 
 	return &PUMLService{
-		serverURL: serverURL,
+		serverURL:    pumlServerURL,
+		onlineRenderURL: fmt.Sprintf("%s/svg", pumlServerURL),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -60,6 +65,36 @@ func NewPUMLService(serverURL string) *PUMLService {
 		cache:      make(map[string]*RenderResult),
 	}
 }
+
+// RenderPUMLOnline 使用POST请求在线渲染PUML，返回SVG字符串
+func (s *PUMLService) RenderPUMLOnline(pumlCode string) (string, error) {
+	// 创建POST请求
+	req, err := http.NewRequest("POST", s.onlineRenderURL, strings.NewReader(pumlCode))
+	if err != nil {
+		return "", fmt.Errorf("创建PlantUML请求失败: %w", err)
+	}
+	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求PlantUML服务失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("PlantUML服务返回错误: %d - %s", resp.StatusCode, string(body))
+	}
+
+	// 读取响应数据
+	svgData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取渲染结果失败: %w", err)
+	}
+
+	return string(svgData), nil
+}
+
 
 // RenderPUML 渲染PUML代码为图像
 func (s *PUMLService) RenderPUML(pumlCode string, options *RenderOptions) (*RenderResult, error) {
