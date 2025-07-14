@@ -299,4 +299,33 @@
   height: auto;
   min-height: 200px;
   display: block;
+}
+
+.ope-error-display.error-with-close {
+  position: relative;
+  padding-right: 40px; /* 给关闭按钮留空间 */
+}
+
+.ope-error-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 22px;
+  font-weight: bold;
+  cursor: pointer;
+  opacity: 0.8;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  transition: background 0.2s, opacity 0.2s;
+}
+.ope-error-close-btn:hover {
+  background: rgba(255,255,255,0.15);
+  opacity: 1;
 } 

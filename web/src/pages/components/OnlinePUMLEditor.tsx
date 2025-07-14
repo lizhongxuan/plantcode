@@ -225,7 +225,26 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
             </div>
           </header>
         )}
-        <main className="ope-main" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <main
+          className="ope-main"
+          style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}
+          onClick={error ? (e) => {
+            // 只在点击非错误提示框区域时关闭
+            if ((e.target as HTMLElement).closest('.ope-error-display') == null) setError('');
+          } : undefined}
+        >
+          {error && (
+            <div className="ope-error-display error-with-close" style={{ position: 'absolute', top: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 20, maxWidth: '80%', minWidth: 320 }} onClick={e => e.stopPropagation()}>
+              <button
+                className="ope-error-close-btn"
+                onClick={() => setError('')}
+                aria-label="关闭错误提示"
+              >
+                ×
+              </button>
+              {error}
+            </div>
+          )}
           {mode === 'edit' && (
             <div className="ope-panel ope-editor-panel" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div className="ope-panel-header">
@@ -247,7 +266,6 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
               <div className="ope-panel-header">
                 <h2>预览</h2>
               </div>
-              {error && <div className="ope-error-display">{error}</div>}
               <div
                 ref={previewRef}
                 className="ope-svg-preview"
@@ -345,7 +363,6 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
                 }}>
                   <span style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>预览</span>
                 </div>
-                {error && <div className="ope-error-display">{error}</div>}
                 <div
                   ref={previewRef}
                   className="ope-svg-preview"
