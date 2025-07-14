@@ -20,6 +20,10 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
   const [error, setError] = useState('');
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(1);
+  const minScale = 0.5;
+  const maxScale = 2;
+  const scaleStep = 0.1;
 
   const handleRender = useCallback(async () => {
     setIsLoading(true);
@@ -213,6 +217,10 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
     }
   };
 
+  const handleZoomIn = () => setPreviewScale(s => Math.min(maxScale, Math.round((s + scaleStep) * 10) / 10));
+  const handleZoomOut = () => setPreviewScale(s => Math.max(minScale, Math.round((s - scaleStep) * 10) / 10));
+  const handleResetZoom = () => setPreviewScale(1);
+
   return (
     <div className={onClose ? "online-puml-editor-modal" : "online-puml-editor-embed"} style={{ height: '100%', minHeight: 0, background: '#fff', ...style }}>
       <div className="online-puml-editor-container" style={{ height: '100%', minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -263,15 +271,24 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
           )}
           {mode === 'preview' && (
             <div className="ope-panel ope-preview-panel" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div className="ope-panel-header">
+              <div className="ope-panel-header" style={{ position: 'relative' }}>
                 <h2>预览</h2>
+                <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button onClick={handleZoomOut} style={{ width: 28, height: 28, fontSize: 18, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>-</button>
+                  <span style={{ minWidth: 36, textAlign: 'center', color: '#fff', fontSize: 14 }}>{Math.round(previewScale * 100)}%</span>
+                  <button onClick={handleZoomIn} style={{ width: 28, height: 28, fontSize: 18, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>+</button>
+                  <button onClick={handleResetZoom} style={{ width: 28, height: 28, fontSize: 14, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>重置</button>
+                </div>
               </div>
               <div
                 ref={previewRef}
                 className="ope-svg-preview"
-                style={{ flex: 1, minHeight: 0, background: '#fff', overflow: 'auto' }}
-                dangerouslySetInnerHTML={{ __html: svgContent }}
-              />
+                style={{ flex: 1, minHeight: 0, background: '#fff', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'center top', transition: 'transform 0.2s', display: 'inline-block' }}
+                  dangerouslySetInnerHTML={{ __html: svgContent }}
+                />
+              </div>
             </div>
           )}
           {mode === 'split' && (
@@ -360,8 +377,15 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
                   borderTopRightRadius: 8,
                   boxSizing: 'border-box',
                   flexShrink: 0,
+                  position: 'relative',
                 }}>
                   <span style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>预览</span>
+                  <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button onClick={handleZoomOut} style={{ width: 28, height: 28, fontSize: 18, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>-</button>
+                    <span style={{ minWidth: 36, textAlign: 'center', color: '#fff', fontSize: 14 }}>{Math.round(previewScale * 100)}%</span>
+                    <button onClick={handleZoomIn} style={{ width: 28, height: 28, fontSize: 18, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>+</button>
+                    <button onClick={handleResetZoom} style={{ width: 28, height: 28, fontSize: 14, borderRadius: 4, border: 'none', background: '#444', color: '#fff', cursor: 'pointer' }}>重置</button>
+                  </div>
                 </div>
                 <div
                   ref={previewRef}
@@ -376,9 +400,15 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
                     borderBottomRightRadius: 8,
                     boxSizing: 'border-box',
                     padding: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                   }}
-                  dangerouslySetInnerHTML={{ __html: svgContent }}
-                />
+                >
+                  <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'center top', transition: 'transform 0.2s', display: 'inline-block' }}
+                    dangerouslySetInnerHTML={{ __html: svgContent }}
+                  />
+                </div>
               </div>
             </div>
           )}
