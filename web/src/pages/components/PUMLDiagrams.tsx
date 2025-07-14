@@ -238,14 +238,13 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
       )}
 
       {isCreateModalOpen && (
-        <Modal visible={isCreateModalOpen} onClose={handleCloseCreateModal} width={900} bodyStyle={{ padding: 0, background: '#fff', borderRadius: 12, minHeight: 600, maxHeight: '80vh', overflow: 'auto' }}>
-          <form onSubmit={handleCreateDiagram}>
-            <div style={{ padding: 32 }}>
+        <Modal visible={isCreateModalOpen} onClose={handleCloseCreateModal} width={900} bodyStyle={{ padding: 0, background: '#fff', borderRadius: 12, minHeight: 600, maxHeight: '80vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <form onSubmit={handleCreateDiagram} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <div style={{ padding: 32, flex: '0 0 auto' }}>
               {/* 表单区 */}
               <div style={{ marginBottom: 24 }}>
                 <label style={{ fontWeight: 600, fontSize: 16, display: 'block', marginBottom: 8 }}>图表名称</label>
                 <Input value={newDiagramName} onChange={e => setNewDiagramName(e.target.value)} placeholder="请输入图表名称" required style={{ width: '100%', height: 40, borderRadius: 8, fontSize: 16, marginBottom: 16 }} />
-                {/* 类型选择可扩展 */}
               </div>
               {/* 显示模式切换区 */}
               <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -256,15 +255,15 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
                   <Button type={editorMode === 'split' ? 'primary' : 'default'} onClick={() => setEditorMode('split')} style={{ borderRadius: 20, fontWeight: 500 }}>分屏显示</Button>
                 </div>
               </div>
-              {/* 分屏区/编辑区/预览区 */}
-              <div style={{ height: 400, display: 'flex', flexDirection: window.innerWidth < 800 ? 'column' : 'row', gap: 24, background: '#fafbfc', borderRadius: 10, boxShadow: '0 2px 8px #eee', marginBottom: 32, padding: 16 }}>
-                <OnlinePUMLEditor value={newDiagramCode} onChange={setNewDiagramCode} mode={editorMode} />
-              </div>
-              {/* 按钮区 */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, marginTop: 24 }}>
-                <Button type="button" onClick={handleCloseCreateModal} variant="outline" style={{ borderRadius: 8, fontWeight: 500 }}>取消</Button>
-                <Button type="submit" disabled={isCreating} variant="primary" style={{ borderRadius: 8, fontWeight: 500 }}>{isCreating ? '保存中...' : '保存'}</Button>
-              </div>
+            </div>
+            {/* 编辑/预览区，flex:1填满剩余空间 */}
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '0 32px' }}>
+              <OnlinePUMLEditor value={newDiagramCode} onChange={setNewDiagramCode} mode={editorMode} style={{ flex: 1, minHeight: 0, minWidth: 0, height: '100%' }} />
+            </div>
+            {/* 按钮区 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, margin: '24px 32px 32px 32px' }}>
+              <Button type="button" onClick={handleCloseCreateModal} variant="outline" style={{ borderRadius: 8, fontWeight: 500 }}>取消</Button>
+              <Button type="submit" disabled={isCreating} variant="primary" style={{ borderRadius: 8, fontWeight: 500 }}>{isCreating ? '保存中...' : '保存'}</Button>
             </div>
           </form>
         </Modal>

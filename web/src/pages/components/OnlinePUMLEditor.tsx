@@ -9,9 +9,10 @@ interface OnlinePUMLEditorProps {
   onSave?: (val: string) => void;
   readOnly?: boolean;
   mode?: 'edit' | 'preview' | 'split';
+  style?: React.CSSProperties;
 }
 
-const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, initialCode, onClose, onSave, readOnly, mode = 'split' }) => {
+const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, initialCode, onClose, onSave, readOnly, mode = 'split', style }) => {
   const isControlled = typeof value === 'string' && typeof onChange === 'function';
   const [pumlCode, setPumlCode] = useState(initialCode || value || '');
   const [svgContent, setSvgContent] = useState('');
@@ -213,8 +214,8 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
   };
 
   return (
-    <div className={onClose ? "online-puml-editor-modal" : "online-puml-editor-embed"}>
-      <div className="online-puml-editor-container">
+    <div className={onClose ? "online-puml-editor-modal" : "online-puml-editor-embed"} style={{ height: '100%', minHeight: 0, background: '#fff', ...style }}>
+      <div className="online-puml-editor-container" style={{ height: '100%', minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {onClose && (
           <header className="ope-header">
             <h1>PlantUML 在线编辑器</h1>
@@ -224,9 +225,9 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
             </div>
           </header>
         )}
-        <main className="ope-main">
+        <main className="ope-main" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {mode === 'edit' && (
-            <div className="ope-panel ope-editor-panel">
+            <div className="ope-panel ope-editor-panel" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div className="ope-panel-header">
                 <h2>PUML 代码</h2>
               </div>
@@ -237,11 +238,12 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
                 className="ope-textarea"
                 placeholder="输入 PlantUML 代码..."
                 readOnly={readOnly}
+                style={{ flex: 1, minHeight: 0, resize: 'none', background: '#fff' }}
               />
             </div>
           )}
           {mode === 'preview' && (
-            <div className="ope-panel ope-preview-panel">
+            <div className="ope-panel ope-preview-panel" style={{ flex: 1, minHeight: 0, background: 'transparent', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div className="ope-panel-header">
                 <h2>预览</h2>
               </div>
@@ -249,39 +251,117 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
               <div
                 ref={previewRef}
                 className="ope-svg-preview"
+                style={{ flex: 1, minHeight: 0, background: '#fff', overflow: 'auto' }}
                 dangerouslySetInnerHTML={{ __html: svgContent }}
               />
             </div>
           )}
           {mode === 'split' && (
-            <div className="ope-split-row">
-              <div>
-                <div className="ope-panel ope-editor-panel">
-                  <div className="ope-panel-header">
-                    <h2>PUML 代码</h2>
-                  </div>
-                  <textarea
-                    ref={editorRef}
-                    value={isControlled ? value : pumlCode}
-                    onChange={handleInputChange}
-                    className="ope-textarea"
-                    placeholder="输入 PlantUML 代码..."
-                    readOnly={readOnly}
-                  />
+            <div className="ope-split-row" style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              width: '100%',
+              height: '100%',
+              minWidth: 0,
+              minHeight: 0,
+              boxSizing: 'border-box',
+              flex: 1,
+              overflow: 'hidden',
+            }}>
+              {/* 左侧代码区 */}
+              <div style={{
+                minWidth: 0,
+                minHeight: 0,
+                height: '100%',
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: 48,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 16px',
+                  fontWeight: 600,
+                  fontSize: 16,
+                  background: '#222',
+                  color: '#fff',
+                  borderTopLeftRadius: 8,
+                  boxSizing: 'border-box',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>PUML 代码</span>
                 </div>
+                <textarea
+                  ref={editorRef}
+                  value={isControlled ? value : pumlCode}
+                  onChange={handleInputChange}
+                  className="ope-textarea"
+                  placeholder="输入 PlantUML 代码..."
+                  readOnly={readOnly}
+                  style={{
+                    flex: 1,
+                    width: '100%',
+                    height: '100%',
+                    minHeight: 0,
+                    background: '#222',
+                    color: '#fff',
+                    border: 'none',
+                    borderBottomLeftRadius: 8,
+                    fontSize: 15,
+                    fontFamily: 'Fira Mono, Menlo, Monaco, Consolas, monospace',
+                    boxSizing: 'border-box',
+                    resize: 'none',
+                    padding: 16,
+                    overflow: 'auto',
+                  }}
+                />
               </div>
-              <div>
-                <div className="ope-panel ope-preview-panel">
-                  <div className="ope-panel-header">
-                    <h2>预览</h2>
-                  </div>
-                  {error && <div className="ope-error-display">{error}</div>}
-                  <div
-                    ref={previewRef}
-                    className="ope-svg-preview"
-                    dangerouslySetInnerHTML={{ __html: svgContent }}
-                  />
+              {/* 右侧预览区 */}
+              <div style={{
+                minWidth: 0,
+                minHeight: 0,
+                height: '100%',
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                boxSizing: 'border-box',
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: 48,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 16px',
+                  fontWeight: 600,
+                  fontSize: 16,
+                  background: '#222',
+                  color: '#fff',
+                  borderTopRightRadius: 8,
+                  boxSizing: 'border-box',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>预览</span>
                 </div>
+                {error && <div className="ope-error-display">{error}</div>}
+                <div
+                  ref={previewRef}
+                  className="ope-svg-preview"
+                  style={{
+                    flex: 1,
+                    width: '100%',
+                    height: '100%',
+                    minHeight: 0,
+                    overflow: 'auto',
+                    background: '#fff',
+                    borderBottomRightRadius: 8,
+                    boxSizing: 'border-box',
+                    padding: 16,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: svgContent }}
+                />
               </div>
             </div>
           )}
