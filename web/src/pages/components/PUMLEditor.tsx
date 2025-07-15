@@ -485,7 +485,7 @@ business --> cache
         title={currentDiagram ? `编辑 ${currentDiagram.diagram_name}` : '新建PUML图表'}
         open={editModalVisible}
         onCancel={() => setEditModalVisible(false)}
-        width={1200}
+        width="100vw"
         footer={[
           <Button key="cancel" onClick={() => setEditModalVisible(false)}>
             取消
@@ -497,7 +497,8 @@ business --> cache
             保存
           </Button>,
         ]}
-        style={{ top: 20 }}
+        style={{ top: 0, paddingBottom: 0, maxWidth: '100vw' }}
+        bodyStyle={{ height: 'calc(100vh - 110px)', padding: '24px', overflow: 'hidden' }}
       >
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           {/* 图表信息 */}
@@ -558,7 +559,7 @@ business --> cache
           </Space>
 
           {/* 编辑器区域 */}
-          <div style={{ height: '500px', border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
+          <div style={{ height: 'calc(100vh - 300px)', border: '1px solid #d9d9d9', borderRadius: '6px', overflow: 'hidden' }}>
             <OnlinePUMLEditor
               value={pumlContent}
               onChange={setPumlContent}

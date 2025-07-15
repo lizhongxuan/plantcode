@@ -425,6 +425,7 @@ func (r *AIRepository) CreatePUMLDiagram(diagram *model.PUMLDiagram) error {
 		return fmt.Errorf("数据库连接不可用")
 	}
 
+	// 使用更简单的插入语句，只包含基本字段
 	query := `
 		INSERT INTO puml_diagrams (
 			diagram_id, project_id, diagram_type, diagram_name,
@@ -444,7 +445,12 @@ func (r *AIRepository) CreatePUMLDiagram(diagram *model.PUMLDiagram) error {
 		diagram.UpdatedAt,
 	)
 
-	return err
+	if err != nil {
+		fmt.Printf("Insert error: %v\n", err)
+		return err
+	}
+
+	return nil
 }
 
 // GetPUMLDiagram 获取PUML图表
@@ -455,7 +461,7 @@ func (r *AIRepository) GetPUMLDiagram(diagramID uuid.UUID) (*model.PUMLDiagram, 
 
 	query := `
 		SELECT diagram_id, project_id, diagram_type, diagram_name,
-			   puml_content, rendered_url, version, is_validated,
+			   puml_content, rendered_url, version, stage, task_id, is_validated,
 			   validation_feedback, created_at, updated_at
 		FROM puml_diagrams 
 		WHERE diagram_id = ?
@@ -470,6 +476,8 @@ func (r *AIRepository) GetPUMLDiagram(diagramID uuid.UUID) (*model.PUMLDiagram, 
 		&diagram.PUMLContent,
 		&diagram.RenderedURL,
 		&diagram.Version,
+		&diagram.Stage,
+		&diagram.TaskID,
 		&diagram.IsValidated,
 		&diagram.ValidationFeedback,
 		&diagram.CreatedAt,
@@ -489,17 +497,34 @@ func (r *AIRepository) GetPUMLDiagramsByProject(projectID uuid.UUID) ([]*model.P
 		return nil, fmt.Errorf("数据库连接不可用")
 	}
 
-	query := `
+	// 首先检查表结构
+	checkQuery := "DESCRIBE puml_diagrams"
+	rows, err := r.db.Query(checkQuery)
+	if err != nil {
+		fmt.Printf("Failed to describe table: %v\n", err)
+	} else {
+		fmt.Println("puml_diagrams table structure:")
+		for rows.Next() {
+			var field, fieldType, null, key, defaultVal, extra sql.NullString
+			rows.Scan(&field, &fieldType, &null, &key, &defaultVal, &extra)
+			fmt.Printf("  %s %s\n", field.String, fieldType.String)
+		}
+		rows.Close()
+	}
+
+	// 尝试一个更简单的查询
+	simpleQuery := `
 		SELECT diagram_id, project_id, diagram_type, diagram_name,
-			   puml_content, rendered_url, version, is_validated,
-			   validation_feedback, created_at, updated_at
+			   puml_content, version, is_validated, created_at, updated_at
 		FROM puml_diagrams 
 		WHERE project_id = ?
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, projectID)
+	fmt.Printf("Trying simple query first...\n")
+	rows, err = r.db.Query(simpleQuery, projectID)
 	if err != nil {
+		fmt.Printf("Simple query failed: %v\n", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -513,19 +538,25 @@ func (r *AIRepository) GetPUMLDiagramsByProject(projectID uuid.UUID) ([]*model.P
 			&diagram.DiagramType,
 			&diagram.DiagramName,
 			&diagram.PUMLContent,
-			&diagram.RenderedURL,
 			&diagram.Version,
 			&diagram.IsValidated,
-			&diagram.ValidationFeedback,
 			&diagram.CreatedAt,
 			&diagram.UpdatedAt,
 		)
 		if err != nil {
+			fmt.Printf("Simple scan error: %v\n", err)
 			return nil, err
 		}
+		// 设置默认值
+		diagram.Stage = 1
+		diagram.TaskID = nil
+		diagram.RenderedURL = ""
+		diagram.ValidationFeedback = ""
+		
 		diagrams = append(diagrams, &diagram)
 	}
 
+	fmt.Printf("Found %d diagrams\n", len(diagrams))
 	return diagrams, nil
 }
 

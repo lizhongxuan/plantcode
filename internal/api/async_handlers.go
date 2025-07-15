@@ -123,35 +123,46 @@ func (h *AsyncHandlers) GetStageProgress(w http.ResponseWriter, r *http.Request)
 // GetStageDocuments 获取阶段文档列表
 // GET /api/async/projects/{projectId}/stages/{stage}/documents
 func (h *AsyncHandlers) GetStageDocuments(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("GetStageDocuments called with URL: %s\n", r.URL.Path)
+	
 	projectIDStr := r.PathValue("projectId")
 	stageStr := r.PathValue("stage")
 	
+	fmt.Printf("Extracted projectId: %s, stage: %s\n", projectIDStr, stageStr)
+	
 	if projectIDStr == "" || stageStr == "" {
+		fmt.Printf("Missing parameters - projectId: %s, stage: %s\n", projectIDStr, stageStr)
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "缺少项目ID或阶段参数")
 		return
 	}
 
 	projectID, err := uuid.Parse(projectIDStr)
 	if err != nil {
+		fmt.Printf("Invalid projectId format: %s, error: %v\n", projectIDStr, err)
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的项目ID")
 		return
 	}
 
 	stage, err := strconv.Atoi(stageStr)
 	if err != nil || stage < 1 || stage > 3 {
+		fmt.Printf("Invalid stage value: %s, error: %v\n", stageStr, err)
 		utils.WriteErrorResponse(w, http.StatusBadRequest, "无效的阶段参数")
 		return
 	}
 
+	fmt.Printf("Processing request for projectId: %s, stage: %d\n", projectID, stage)
+
 	// 获取项目的文档和PUML图表
 	documents, err := h.aiService.GetDocumentsByProject(projectID)
 	if err != nil {
+		fmt.Printf("Error getting documents: %v\n", err)
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("获取文档列表失败: %v", err))
 		return
 	}
 
 	diagrams, err := h.aiService.GetPUMLDiagramsByProject(projectID)
 	if err != nil {
+		fmt.Printf("Error getting diagrams: %v\n", err)
 		utils.WriteErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("获取PUML图表列表失败: %v", err))
 		return
 	}
@@ -179,6 +190,7 @@ func (h *AsyncHandlers) GetStageDocuments(w http.ResponseWriter, r *http.Request
 		"diagrams":   stageDiagrams,
 	}
 
+	fmt.Printf("Returning %d documents and %d diagrams for stage %d\n", len(stageDocuments), len(stageDiagrams), stage)
 	utils.WriteSuccessResponse(w, response, "获取阶段文档成功")
 }
 

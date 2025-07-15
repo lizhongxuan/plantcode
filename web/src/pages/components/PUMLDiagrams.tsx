@@ -49,7 +49,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     try {
       setLoading(true);
       setError('');
-      const response = await api.get(`/api/puml/project/${projectId}`);
+      const response = await api.get(`/puml/project/${projectId}`);
       if (response.data.success) {
         const loadedDiagrams = response.data.data || [];
         setDiagrams(loadedDiagrams);
@@ -60,7 +60,12 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
         }
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || '加载图表列表失败');
+      const status = err.response?.status;
+      const message = err.response?.data?.error || err.message || '加载图表列表失败';
+      console.error('加载PUML图表列表失败:', err);
+      console.error('状态码:', status);
+      console.error('请求URL:', `/puml/project/${projectId}`);
+      setError(`加载图表列表失败 (${status}): ${message}`);
     } finally {
       setLoading(false);
     }
@@ -107,7 +112,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     }
 
     try {
-      await api.put(`/api/puml/${diagramId}`, {
+      await api.put(`/puml/${diagramId}`, {
         content: newCode,
         title: diagramToUpdate.diagram_name,
       });
@@ -130,17 +135,24 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
     if (!newDiagramName.trim() || !newDiagramCode.trim()) return;
     setIsCreating(true);
     try {
-      const response = await api.post(`/api/puml/create`, {
+      const response = await api.post(`/puml/create`, {
         project_id: projectId,
         diagram_name: newDiagramName,
         puml_content: newDiagramCode,
+        diagram_type: 'manual', // 手动创建的图表类型
+        stage: 1, // 默认为阶段1
       });
       if (response.data.success) {
         setIsCreateModalOpen(false);
         loadDiagrams();
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || '新建图表失败');
+      const status = err.response?.status;
+      const message = err.response?.data?.error || err.message || '新建图表失败';
+      console.error('创建PUML图表失败:', err);
+      console.error('状态码:', status);
+      console.error('最终请求URL应该是:', '/api/puml/create');
+      setError(`新建图表失败 (${status}): ${message}`);
     } finally {
       setIsCreating(false);
     }
@@ -238,7 +250,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
       )}
 
       {isCreateModalOpen && (
-        <Modal visible={isCreateModalOpen} onClose={handleCloseCreateModal} width={900} bodyStyle={{ padding: 0, background: '#fff', borderRadius: 12, minHeight: 600, maxHeight: '80vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <Modal visible={isCreateModalOpen} onClose={handleCloseCreateModal} width="100vw" bodyStyle={{ padding: 0, background: '#fff', borderRadius: 0, minHeight: '100vh', maxHeight: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
           <form onSubmit={handleCreateDiagram} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div style={{ padding: 32, flex: '0 0 auto' }}>
               {/* 表单区 */}
@@ -257,7 +269,7 @@ const PUMLDiagrams: React.FC<PUMLDiagramsProps> = ({ projectId }) => {
               </div>
             </div>
             {/* 编辑/预览区，flex:1填满剩余空间 */}
-            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '0 32px' }}>
+            <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', padding: '0 32px', height: 'calc(100vh - 200px)' }}>
               <OnlinePUMLEditor value={newDiagramCode} onChange={setNewDiagramCode} mode={editorMode} style={{ flex: 1, minHeight: 0, minWidth: 0, height: '100%' }} />
             </div>
             {/* 按钮区 */}

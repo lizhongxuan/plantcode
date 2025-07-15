@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"ai-dev-platform/internal/model"
 	"ai-dev-platform/internal/service"
@@ -289,6 +290,8 @@ func (h *PUMLHandlers) GetProjectPUMLs(w http.ResponseWriter, r *http.Request) {
 	// 调用AI服务获取PUML图表列表
 	diagrams, err := h.aiService.GetPUMLDiagramsByProject(projectID)
 	if err != nil {
+		// 添加详细的错误日志
+		fmt.Printf("GetPUMLDiagramsByProject error: %v\n", err)
 		http.Error(w, "获取PUML图表列表失败: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -343,6 +346,7 @@ func (h *PUMLHandlers) CreatePUML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 创建PUML图表
+	now := time.Now()
 	diagram := &model.PUMLDiagram{
 		DiagramID:   uuid.New(),
 		ProjectID:   projectID,
@@ -352,6 +356,8 @@ func (h *PUMLHandlers) CreatePUML(w http.ResponseWriter, r *http.Request) {
 		Stage:       req.Stage,
 		Version:     1,
 		IsValidated: false,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	// 调用AI服务创建PUML图表

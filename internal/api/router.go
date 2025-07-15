@@ -285,19 +285,22 @@ func (router *Router) SetupRoutes() http.Handler {
 		authMiddlewares...,
 	))
 
-	// 获取项目进度状态 - 修复路由冲突
+	// ===== 异步任务相关路由 =====
+	// 阶段文档查询 - 必须在通用路由之前注册
+	mux.Handle("/api/async/projects/{projectId}/stages/{stage}/documents", Apply(
+		http.HandlerFunc(router.asyncHandlers.GetStageDocuments),
+		authMiddlewares...,
+	))
+
+	// 项目进度查询
+	mux.Handle("/api/async/projects/{projectId}/progress", Apply(
+		http.HandlerFunc(router.asyncHandlers.GetProjectProgress),
+		authMiddlewares...,
+	))
+
+	// 其他异步项目相关路由（通用处理器）
 	mux.Handle("/api/async/projects/", Apply(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 解析路径判断是进度查询还是文档查询
-			path := r.URL.Path
-			if strings.Contains(path, "/progress") {
-				router.projectProgressHandler(w, r)
-			} else if strings.Contains(path, "/stages/") && strings.Contains(path, "/documents") {
-				router.stageDocumentsHandler(w, r)
-			} else {
-				router.asyncProjectHandler(w, r)
-			}
-		}),
+		http.HandlerFunc(router.asyncProjectHandler),
 		authMiddlewares...,
 	))
 
@@ -360,13 +363,7 @@ func (router *Router) SetupRoutes() http.Handler {
 	))
 
 	// ===== 项目PUML管理路由 =====
-	// 获取项目PUML图表列表
-	mux.Handle("/api/puml/project/", Apply(
-		http.HandlerFunc(router.pumlHandlers.GetProjectPUMLs),
-		authMiddlewares...,
-	))
-
-	// 创建PUML图表
+	// 创建PUML图表 - 必须在通用路由之前
 	mux.Handle("/api/puml/create", Apply(
 		http.HandlerFunc(router.methodHandler(map[string]http.HandlerFunc{
 			http.MethodPost: router.pumlHandlers.CreatePUML,
@@ -374,8 +371,14 @@ func (router *Router) SetupRoutes() http.Handler {
 		authMiddlewares...,
 	))
 
+	// 获取项目PUML图表列表
+	mux.Handle("/api/puml/project/{projectId}", Apply(
+		http.HandlerFunc(router.pumlHandlers.GetProjectPUMLs),
+		authMiddlewares...,
+	))
+
 	// PUML图表管理（更新、删除）
-	mux.Handle("/api/puml/", Apply(
+	mux.Handle("/api/puml/{pumlId}", Apply(
 		http.HandlerFunc(router.pumlManagementHandler),
 		authMiddlewares...,
 	))
