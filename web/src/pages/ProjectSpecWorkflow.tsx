@@ -25,10 +25,15 @@ import {
   ZoomOutOutlined,
   BorderOuterOutlined,
   FullscreenOutlined,
-  FullscreenExitOutlined
+  FullscreenExitOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined
 } from '@ant-design/icons';
 import { projectApi, aiApi } from '@/services/api';
 import type { Project, ProjectDocument } from '@/types';
+import Header from '@/components/layout/Header';
 
 const { Content } = Layout;
 const { Text } = Typography;
@@ -51,6 +56,10 @@ const ProjectSpecWorkflow: React.FC = () => {
   const [editMode, setEditMode] = useState(false);
   const [isPumlFile, setIsPumlFile] = useState(false);
   
+  // 面板收缩状态
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  
   // PUML预览相关状态
   const [pumlZoom, setPumlZoom] = useState(100); // 缩放百分比
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -67,6 +76,28 @@ const ProjectSpecWorkflow: React.FC = () => {
       loadProjectData();
     }
   }, [projectId]);
+
+  // 从localStorage加载面板状态
+  useEffect(() => {
+    const savedLeftState = localStorage.getItem('leftPanelCollapsed');
+    const savedRightState = localStorage.getItem('rightPanelCollapsed');
+    
+    if (savedLeftState !== null) {
+      setLeftPanelCollapsed(JSON.parse(savedLeftState));
+    }
+    if (savedRightState !== null) {
+      setRightPanelCollapsed(JSON.parse(savedRightState));
+    }
+  }, []);
+
+  // 保存面板状态到localStorage
+  useEffect(() => {
+    localStorage.setItem('leftPanelCollapsed', JSON.stringify(leftPanelCollapsed));
+  }, [leftPanelCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('rightPanelCollapsed', JSON.stringify(rightPanelCollapsed));
+  }, [rightPanelCollapsed]);
 
   // 禁用页面滚动
   useEffect(() => {
@@ -86,6 +117,16 @@ const ProjectSpecWorkflow: React.FC = () => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) {
         setIsFullscreen(false);
+      }
+      // F1切换左侧面板
+      if (e.key === 'F1') {
+        e.preventDefault();
+        setLeftPanelCollapsed(prev => !prev);
+      }
+      // F2切换右侧面板
+      if (e.key === 'F2') {
+        e.preventDefault();
+        setRightPanelCollapsed(prev => !prev);
       }
     };
     
@@ -706,95 +747,159 @@ const ProjectSpecWorkflow: React.FC = () => {
 
   return (
     <>
+      {/* 添加Header */}
+      <Header />
+      
       <Layout style={{ 
-        height: 'calc(100vh - 4rem - 48px)', // 减去Header 4rem + padding 48px (p-6 = 24px * 2)
+        height: 'calc(100vh - 4rem)', // 减去Header的4rem高度
         width: '100%',
         background: '#f5f5f5', 
         overflow: 'hidden'
       }}>
       {/* 左侧文件树 */}
       <Layout.Sider 
-        width={280} 
+        width={leftPanelCollapsed ? 60 : 280} 
+        collapsedWidth={60}
+        collapsed={leftPanelCollapsed}
         theme="light"
         style={{ 
           background: '#fafafa',
           borderRight: '1px solid #e8e8e8',
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 4rem - 48px)',
-          overflow: 'hidden'
+          height: 'calc(100vh - 4rem)', // 减去Header高度
+          overflow: 'hidden',
+          transition: 'width 0.3s ease'
         }}
       >
-        {/* 项目头部 */}
+        {/* 收缩按钮 */}
         <div style={{ 
-          padding: '12px 16px', 
+          height: '40px',
+          background: '#fff', 
           borderBottom: '1px solid #e8e8e8',
-          background: '#fff'
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: leftPanelCollapsed ? 'center' : 'flex-end',
+          padding: leftPanelCollapsed ? '0' : '0 12px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-            <Button 
-              type="text" 
-              icon={<ArrowLeftOutlined />} 
-              onClick={() => navigate('/projects')}
-              style={{ marginRight: '8px' }}
-            />
-            <Text style={{ fontSize: '14px', fontWeight: 500 }}>
-              {project.project_name}
-            </Text>
-          </div>
-          
-          {/* 阶段进度 */}
-          <Steps 
-            direction="vertical" 
-            size="small" 
-            current={currentStage - 1}
-            style={{ fontSize: '12px' }}
-            items={[
-              {
-                title: <span style={{ fontSize: '12px' }}>需求确定</span>,
-                icon: <FileTextOutlined style={{ color: currentStage >= 1 ? '#1890ff' : '#999' }} />,
-              },
-              {
-                title: <span style={{ fontSize: '12px' }}>项目设计</span>,
-                icon: <FileTextOutlined style={{ color: currentStage >= 2 ? '#1890ff' : '#999' }} />,
-              },
-              {
-                title: <span style={{ fontSize: '12px' }}>任务分解</span>,
-                icon: <CheckSquareOutlined style={{ color: currentStage >= 3 ? '#1890ff' : '#999' }} />,
-              }
-            ]}
-          />
-        </div>
-
-        {/* 文件资源管理器 */}
-        <div style={{ flex: 1, padding: '8px', overflow: 'auto' }}>
-          <div style={{ 
-            color: '#666', 
-            fontSize: '11px', 
-            fontWeight: 600, 
-            marginBottom: '8px',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px'
-          }}>
-            EXPLORER
-          </div>
-          <Tree
-            showIcon
-            defaultExpandAll
-            treeData={treeData}
-            onSelect={handleFileSelect}
+          <Button 
+            type="text" 
+            icon={leftPanelCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+            title={leftPanelCollapsed ? '展开文件面板 (F1)' : '收缩文件面板 (F1)'}
             style={{ 
-              background: 'transparent'
+              color: '#666',
+              fontSize: '14px'
             }}
           />
         </div>
+
+        {!leftPanelCollapsed ? (
+          <>
+            {/* 项目头部 */}
+            <div style={{ 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e8e8e8',
+              background: '#fff'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                <Button 
+                  type="text" 
+                  icon={<ArrowLeftOutlined />} 
+                  onClick={() => navigate('/projects')}
+                  style={{ marginRight: '8px' }}
+                />
+                <Text style={{ fontSize: '14px', fontWeight: 500 }}>
+                  {project.project_name}
+                </Text>
+              </div>
+              
+              {/* 阶段进度 */}
+              <Steps 
+                direction="vertical" 
+                size="small" 
+                current={currentStage - 1}
+                style={{ fontSize: '12px' }}
+                items={[
+                  {
+                    title: <span style={{ fontSize: '12px' }}>需求确定</span>,
+                    icon: <FileTextOutlined style={{ color: currentStage >= 1 ? '#1890ff' : '#999' }} />,
+                  },
+                  {
+                    title: <span style={{ fontSize: '12px' }}>项目设计</span>,
+                    icon: <FileTextOutlined style={{ color: currentStage >= 2 ? '#1890ff' : '#999' }} />,
+                  },
+                  {
+                    title: <span style={{ fontSize: '12px' }}>任务分解</span>,
+                    icon: <CheckSquareOutlined style={{ color: currentStage >= 3 ? '#1890ff' : '#999' }} />,
+                  }
+                ]}
+              />
+            </div>
+
+            {/* 文件资源管理器 */}
+            <div style={{ flex: 1, padding: '8px', overflow: 'auto' }}>
+              <div style={{ 
+                color: '#666', 
+                fontSize: '11px', 
+                fontWeight: 600, 
+                marginBottom: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                EXPLORER
+              </div>
+              <Tree
+                showIcon
+                defaultExpandAll
+                treeData={treeData}
+                onSelect={handleFileSelect}
+                style={{ 
+                  background: 'transparent'
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          /* 收缩状态显示 */
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            padding: '16px 8px',
+            gap: '16px'
+          }}>
+            <div 
+              style={{ 
+                color: '#666', 
+                fontSize: '18px',
+                cursor: 'pointer'
+              }}
+              title="文件资源管理器"
+            >
+              <FolderOutlined />
+            </div>
+            <div 
+              style={{ 
+                color: '#666', 
+                fontSize: '16px',
+                cursor: 'pointer'
+              }}
+              title="返回项目列表"
+              onClick={() => navigate('/projects')}
+            >
+              <ArrowLeftOutlined />
+            </div>
+          </div>
+        )}
       </Layout.Sider>
 
       <Layout style={{ 
         display: 'flex', 
         flexDirection: 'column', 
         flex: 1,
-        height: 'calc(100vh - 4rem - 48px)',
+        height: 'calc(100vh - 4rem)', // 减去Header高度
         overflow: 'hidden'
       }}>
         {/* 标签页头部 */}
@@ -834,13 +939,14 @@ const ProjectSpecWorkflow: React.FC = () => {
       {/* 右侧AI助手面板 */}
       <div
         style={{ 
-          width: '350px',
+          width: rightPanelCollapsed ? '60px' : '350px',
           background: '#fafafa',
           borderLeft: '1px solid #e8e8e8',
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100vh - 4rem - 48px)',
-          overflow: 'hidden'
+          height: 'calc(100vh - 4rem)', // 减去Header高度
+          overflow: 'hidden',
+          transition: 'width 0.3s ease'
         }}
       >
         {/* AI助手头部 */}
@@ -850,109 +956,150 @@ const ProjectSpecWorkflow: React.FC = () => {
           borderBottom: '1px solid #e8e8e8',
           display: 'flex',
           alignItems: 'center',
-          padding: '0 12px'
+          padding: '0 12px',
+          justifyContent: rightPanelCollapsed ? 'center' : 'space-between'
         }}>
-          <RobotOutlined style={{ color: '#1890ff', marginRight: '8px' }} />
-          <Text style={{ fontSize: '13px', fontWeight: 500 }}>
-            Kiro AI Assistant
-          </Text>
-        </div>
-
-        {/* 对话历史 */}
-        <div 
-          ref={chatContainerRef}
-          style={{ 
-            flex: 1,
-            padding: '12px',
-            overflow: 'auto',
-            minHeight: 0
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            minHeight: '100%',
-            justifyContent: chatMessages.length === 0 ? 'center' : 'flex-start'
-          }}>
-          {chatMessages.length === 0 ? (
-            <div style={{ 
-              textAlign: 'center', 
-              color: '#999', 
-              fontSize: '13px',
-              marginTop: '50px'
-            }}>
-              <RobotOutlined style={{ fontSize: '32px', marginBottom: '12px', color: '#1890ff' }} />
-              <div>Hi! I'm Kiro, your AI assistant.</div>
-              <div>How can I help you with your project today?</div>
+          {!rightPanelCollapsed && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <RobotOutlined style={{ color: '#1890ff', marginRight: '8px' }} />
+              <Text style={{ fontSize: '13px', fontWeight: 500 }}>
+                Kiro AI Assistant
+              </Text>
             </div>
-          ) : (
-            chatMessages.map((msg) => (
-              <div key={msg.id} style={{ 
-                display: 'flex', 
-                flexDirection: 'column',
-                alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'
-              }}>
-                <div style={{
-                  background: msg.role === 'user' ? '#1890ff' : '#f5f5f5',
-                  color: msg.role === 'user' ? '#fff' : '#333',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  maxWidth: '85%',
-                  fontSize: '13px',
-                  lineHeight: '1.4',
-                  border: msg.role === 'assistant' ? '1px solid #e8e8e8' : 'none',
-                  wordWrap: 'break-word',
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'break-word'
-                }}>
-                  {msg.content}
-                </div>
-                <Text style={{ 
-                  fontSize: '11px', 
-                  color: '#999', 
-                  marginTop: '4px',
-                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start'
-                }}>
-                  {msg.timestamp}
-                </Text>
-              </div>
-            ))
           )}
-          </div>
+          <Button 
+            type="text" 
+            icon={rightPanelCollapsed ? <DoubleLeftOutlined /> : <DoubleRightOutlined />}
+            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            title={rightPanelCollapsed ? '展开AI助手 (F2)' : '收缩AI助手 (F2)'}
+            style={{ 
+              color: '#666',
+              fontSize: '14px'
+            }}
+          />
         </div>
 
-        {/* 输入区域 */}
-        <div style={{ 
-          padding: '12px',
-          borderTop: '1px solid #e8e8e8',
-          background: '#fff',
-          flexShrink: 0
-        }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-            <Input.TextArea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type your message..."
-              autoSize={{ minRows: 1, maxRows: 3 }}
-              onPressEnter={(e) => {
-                if (!e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
+        {!rightPanelCollapsed ? (
+          <>
+            {/* 对话历史 */}
+            <div 
+              ref={chatContainerRef}
+              style={{ 
+                flex: 1,
+                padding: '12px',
+                overflow: 'auto',
+                minHeight: 0
               }}
-              style={{ flex: 1 }}
-            />
-            <Button 
-              type="primary"
-              onClick={handleSendMessage}
-              disabled={!inputText.trim()}
-              style={{ flexShrink: 0 }}
             >
-              Send
-            </Button>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                minHeight: '100%',
+                justifyContent: chatMessages.length === 0 ? 'center' : 'flex-start'
+              }}>
+              {chatMessages.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  color: '#999', 
+                  fontSize: '13px',
+                  marginTop: '50px'
+                }}>
+                  <RobotOutlined style={{ fontSize: '32px', marginBottom: '12px', color: '#1890ff' }} />
+                  <div>Hi! I'm Kiro, your AI assistant.</div>
+                  <div>How can I help you with your project today?</div>
+                </div>
+              ) : (
+                chatMessages.map((msg) => (
+                  <div key={msg.id} style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                  }}>
+                    <div style={{
+                      background: msg.role === 'user' ? '#1890ff' : '#f5f5f5',
+                      color: msg.role === 'user' ? '#fff' : '#333',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      maxWidth: '85%',
+                      fontSize: '13px',
+                      lineHeight: '1.4',
+                      border: msg.role === 'assistant' ? '1px solid #e8e8e8' : 'none',
+                      wordWrap: 'break-word',
+                      whiteSpace: 'pre-wrap',
+                      overflowWrap: 'break-word'
+                    }}>
+                      {msg.content}
+                    </div>
+                    <Text style={{ 
+                      fontSize: '11px', 
+                      color: '#999', 
+                      marginTop: '4px',
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start'
+                    }}>
+                      {msg.timestamp}
+                    </Text>
+                  </div>
+                ))
+              )}
+              </div>
+            </div>
+
+            {/* 输入区域 */}
+            <div style={{ 
+              padding: '12px',
+              borderTop: '1px solid #e8e8e8',
+              background: '#fff',
+              flexShrink: 0
+            }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                <Input.TextArea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder="Type your message..."
+                  autoSize={{ minRows: 1, maxRows: 3 }}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Button 
+                  type="primary"
+                  onClick={handleSendMessage}
+                  disabled={!inputText.trim()}
+                  style={{ flexShrink: 0 }}
+                >
+                  Send
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          /* 收缩状态显示 */
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px 8px'
+          }}>
+            <div 
+              style={{ 
+                color: '#1890ff', 
+                fontSize: '24px',
+                cursor: 'pointer'
+              }}
+              title="AI助手"
+              onClick={() => setRightPanelCollapsed(false)}
+            >
+              <RobotOutlined />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </Layout>
     
@@ -960,7 +1107,7 @@ const ProjectSpecWorkflow: React.FC = () => {
     {isFullscreen && isPumlFile && selectedDocument && (
       <Modal
         title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: '40px' }}>
             <span>全屏预览 - {selectedDocument.document_name}</span>
             <Space>
               <span style={{ fontSize: '12px', color: '#666' }}>缩放: {pumlZoom}%</span>

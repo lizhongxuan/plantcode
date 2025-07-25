@@ -116,9 +116,6 @@ const App: React.FC = () => {
         <Route path="projects/:projectId" element={<ProjectDetail />} />
         <Route path="projects/:projectId/edit" element={<EditProject />} />
         
-        {/* Spec 工作流路由 */}
-        <Route path="projects/:projectId/spec" element={<ProjectSpecWorkflow />} />
-        
         {/* 保留原有AI功能路由（向后兼容） */}
         <Route path="project/:projectId/ai-analysis" element={<AIAnalysis />} />
         <Route path="project/:projectId/chat" element={<Chat />} />
@@ -128,6 +125,16 @@ const App: React.FC = () => {
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<div className="p-6 bg-white rounded-lg shadow">个人资料页面 - 开发中</div>} />
       </Route>
+      
+      {/* Spec 工作流路由 - 独立于MainLayout外部 */}
+      <Route 
+        path="projects/:projectId/spec" 
+        element={
+          <PrivateRoute>
+            <ProjectSpecWorkflow />
+          </PrivateRoute>
+        } 
+      />
       
       {/* 404路由 */}
       <Route path="*" element={
