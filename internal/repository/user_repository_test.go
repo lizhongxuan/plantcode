@@ -11,7 +11,25 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
+
+// convertNullTime 将 sql.NullTime 转换为 *time.Time
+func convertNullTime(nt sql.NullTime) *time.Time {
+	if !nt.Valid {
+		return nil
+	}
+	return &nt.Time
+}
+
+// convertTimePtr 将 *time.Time 转换为 sql.NullTime
+func convertTimePtr(t *time.Time) sql.NullTime {
+	if t == nil {
+		return sql.NullTime{Valid: false}
+	}
+	return sql.NullTime{Time: *t, Valid: true}
+}
 
 type UserRepositoryTestSuite struct {
 	suite.Suite
@@ -25,7 +43,14 @@ func (suite *UserRepositoryTestSuite) SetupTest() {
 	suite.db, suite.mock, err = sqlmock.New()
 	assert.NoError(suite.T(), err)
 
-	database := &Database{MySQL: suite.db}
+	// 这个测试需要重构，使用GORM和真实的测试数据库
+	// 暂时注释掉，创建一个SQL DB到GORM的桥接
+	gormDB, err := gorm.Open(mysql.New(mysql.Config{
+		Conn: suite.db,
+	}), &gorm.Config{})
+	assert.NoError(suite.T(), err)
+	
+	database := &Database{GORM: gormDB}
 	suite.repository = NewMySQLRepository(database)
 }
 
@@ -385,7 +410,7 @@ func (suite *UserRepositoryTestSuite) TestUpdateUserLastLogin_DatabaseError() {
 // 测试数据库为空的情况
 func (suite *UserRepositoryTestSuite) TestCreateUser_NilDatabase() {
 	// Arrange
-	repository := NewMySQLRepository(&Database{MySQL: nil})
+	repository := NewMySQLRepository(&Database{GORM: nil})
 	user := &model.User{
 		UserID:   uuid.New(),
 		Username: "testuser",

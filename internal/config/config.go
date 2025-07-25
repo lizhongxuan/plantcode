@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"ai-dev-platform/internal/log"
 	"os"
 	"strconv"
 	"time"
@@ -174,15 +174,15 @@ func Load() *Config {
 func validateConfig(cfg *Config) {
 	if cfg.Env == "production" {
 		if cfg.JWT.Secret == "ai-dev-platform-secret" {
-			log.Println("警告: JWT密钥未在生产环境中更改")
+			log.Warn("警告: JWT密钥未在生产环境中更改")
 		}
 		if cfg.AI.OpenAIConfig.APIKey == "" && cfg.AI.ClaudeConfig.APIKey == "" && cfg.AI.GeminiConfig.APIKey == "" {
-			log.Println("警告: 在生产环境中未设置任何AI服务密钥")
+			log.Warn("警告: 在生产环境中未设置任何AI服务密钥")
 		}
 	}
 
 	if cfg.AI.OpenAIConfig.APIKey == "" && cfg.AI.ClaudeConfig.APIKey == "" && cfg.AI.GeminiConfig.APIKey == "" {
-		log.Println("警告: 未设置AI服务密钥，部分功能可能无法使用")
+		log.Warn("警告: 未设置AI服务密钥，部分功能可能无法使用")
 	}
 }
 

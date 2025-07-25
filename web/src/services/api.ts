@@ -1,4 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
+import { apiConfig } from '@/config/api';
+import { getAuthToken } from '@/utils/auth';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -14,8 +16,8 @@ import type {
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: '/api',
-  timeout: 10000,  // 默认10秒超时
+  baseURL: apiConfig.baseURL,
+  timeout: apiConfig.timeout,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -23,7 +25,7 @@ const api = axios.create({
 
 // 创建长时间任务的axios实例
 const longTaskApi = axios.create({
-  baseURL: '/api',
+  baseURL: apiConfig.baseURL,
   timeout: 60000,  // 60秒超时，用于AI生成等长时间任务
   headers: {
     'Content-Type': 'application/json',
@@ -33,7 +35,7 @@ const longTaskApi = axios.create({
 // 请求拦截器 - 添加认证token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -47,7 +49,7 @@ api.interceptors.request.use(
 // 为长时间任务API添加相同的拦截器
 longTaskApi.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -125,11 +127,22 @@ export const authApi = {
 
   // 验证token有效性
   validateToken: async (): Promise<User> => {
-    const response = await api.get<ApiResponse<User>>('/auth/validate');
-    if (!response.data.success) {
-      throw new Error(response.data.error || 'Token验证失败');
+    try {
+      const response = await api.get<ApiResponse<User>>('/auth/validate');
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Token验证失败');
+      }
+      return response.data.data!;
+    } catch (error: any) {
+      // 如果是401错误，说明token已失效
+      if (error.response?.status === 401) {
+        // 清除本地存储的token
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth-store');
+        throw new Error('登录已过期，请重新登录');
+      }
+      throw error;
     }
-    return response.data.data!;
   },
 
   // 退出登录
@@ -163,7 +176,7 @@ export const userApi = {
 export const projectApi = {
   // 创建项目
   createProject: async (data: CreateProjectRequest): Promise<Project> => {
-    const response = await api.post<ApiResponse<Project>>('/projects', data);
+    const response = await api.post<ApiResponse<Project>>('/v1/projects', data);
     if (!response.data.success) {
       throw new Error(response.data.error || '创建项目失败');
     }
@@ -172,18 +185,36 @@ export const projectApi = {
 
   // 获取项目列表
   getProjects: async (page: number = 1, pageSize: number = 10): Promise<{ data: PaginatedResponse<Project> }> => {
-    const response = await api.get<PaginatedResponse<Project>>('/projects/list', {
+    const response = await api.get('/v1/projects', {
       params: { page, page_size: pageSize },
     });
-    if (!response.data.success) {
-      throw new Error(response.data.message || '获取项目列表失败');
+    
+    // 检查响应格式并适配
+    if (response.data.success === false) {
+      throw new Error(response.data.error || '获取项目列表失败');
     }
+    
+    // 如果后端返回的格式是 { success: true, data: [], pagination: {} }
+    // 需要转换为前端期望的格式
+    const backendData = response.data;
+    if (backendData.success && backendData.data && backendData.pagination) {
+      return {
+        data: {
+          success: true,
+          data: backendData.data,
+          pagination: backendData.pagination,
+          message: backendData.message || '获取项目列表成功'
+        }
+      };
+    }
+    
+    // 如果已经是期望的格式，直接返回
     return response;
   },
 
   // 获取项目详情
   getProject: async (id: string): Promise<Project> => {
-    const response = await api.get<ApiResponse<Project>>(`/projects/${id}`);
+    const response = await api.get<ApiResponse<Project>>(`/v1/projects/${id}`);
     if (!response.data.success) {
       throw new Error(response.data.error || '获取项目详情失败');
     }
@@ -192,7 +223,7 @@ export const projectApi = {
 
   // 更新项目
   updateProject: async (id: string, data: ProjectUpdateRequest): Promise<Project> => {
-    const response = await api.put<ApiResponse<Project>>(`/projects/${id}`, data);
+    const response = await api.put<ApiResponse<Project>>(`/v1/projects/${id}`, data);
     if (!response.data.success) {
       throw new Error(response.data.error || '更新项目失败');
     }
@@ -201,10 +232,28 @@ export const projectApi = {
 
   // 删除项目
   deleteProject: async (id: string): Promise<void> => {
-    const response = await api.delete<ApiResponse>(`/projects/${id}`);
+    const response = await api.delete<ApiResponse>(`/v1/projects/${id}`);
     if (!response.data.success) {
       throw new Error(response.data.error || '删除项目失败');
     }
+  },
+
+  // 生成项目设计（第二阶段）
+  generateDesign: async (projectId: string): Promise<any> => {
+    const response = await longTaskApi.post(`/v1/projects/${projectId}/generate-design`);
+    if (!response.data.success) {
+      throw new Error(response.data.error || '生成项目设计失败');
+    }
+    return response.data;
+  },
+
+  // 生成TODO文档（第三阶段）
+  generateTodos: async (projectId: string): Promise<any> => {
+    const response = await longTaskApi.post(`/v1/projects/${projectId}/generate-todos`);
+    if (!response.data.success) {
+      throw new Error(response.data.error || '生成TODO文档失败');
+    }
+    return response.data;
   },
 };
 

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"ai-dev-platform/internal/config"
+	"ai-dev-platform/internal/model"
+	"github.com/google/uuid"
 )
 
 // PUMLService PlantUML渲染服务
@@ -299,4 +301,140 @@ func (s *PUMLService) GetCacheStats() map[string]interface{} {
 		"cache_size": len(s.cache),
 		"cache_enabled": s.enableCache,
 	}
+}
+
+// ===== Controller需要的方法 =====
+
+// CreatePUML 创建PUML图表
+func (s *PUMLService) CreatePUML(userID uuid.UUID, req *model.CreatePUMLRequest) (*model.PUMLDiagram, error) {
+	// 验证PUML语法
+	validation := s.ValidatePUMLString(req.Content)
+	if !validation.IsValid {
+		return nil, fmt.Errorf("PUML语法错误: %v", validation.Errors)
+	}
+
+	// 创建PUML图表记录（这里应该调用repository层，暂时返回模拟数据）
+	diagram := &model.PUMLDiagram{
+		DiagramID:   uuid.New(),
+		ProjectID:   uuid.MustParse(req.ProjectID),
+		DiagramName: req.Title,
+		PUMLContent: req.Content,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	return diagram, nil
+}
+
+// GetProjectPUMLs 获取项目PUML图表列表
+func (s *PUMLService) GetProjectPUMLs(userID uuid.UUID, projectID string) ([]*model.PUMLDiagram, error) {
+	// 这里应该调用repository层获取数据，暂时返回空列表
+	return []*model.PUMLDiagram{}, nil
+}
+
+// UpdatePUMLDiagram 更新PUML图表
+func (s *PUMLService) UpdatePUMLDiagram(userID uuid.UUID, pumlID string, req *model.UpdatePUMLRequest) (*model.PUMLDiagram, error) {
+	// 验证PUML语法
+	validation := s.ValidatePUMLString(req.Content)
+	if !validation.IsValid {
+		return nil, fmt.Errorf("PUML语法错误: %v", validation.Errors)
+	}
+
+	// 更新PUML图表（这里应该调用repository层，暂时返回模拟数据）
+	diagram := &model.PUMLDiagram{
+		DiagramID:   uuid.MustParse(pumlID),
+		DiagramName: req.Title,
+		PUMLContent: req.Content,
+		UpdatedAt:   time.Now(),
+	}
+
+	return diagram, nil
+}
+
+// DeletePUML 删除PUML图表
+func (s *PUMLService) DeletePUML(userID uuid.UUID, pumlID string) error {
+	// 这里应该调用repository层删除数据
+	return nil
+}
+
+// RenderPUMLImage 渲染PUML图片
+func (s *PUMLService) RenderPUMLImage(req *model.RenderPUMLRequest) (*RenderResult, error) {
+	options := &RenderOptions{
+		Format:     req.Format,
+		UseCache:   true,
+		ServerMode: true,
+	}
+	if options.Format == "" {
+		options.Format = "png"
+	}
+
+	return s.RenderPUML(req.Content, options)
+}
+
+// RenderPUMLOnlineFromRequest 在线渲染PUML（适配controller接口）
+func (s *PUMLService) RenderPUMLOnlineFromRequest(req *model.RenderPUMLRequest) (string, error) {
+	return s.RenderPUMLOnline(req.Content)
+}
+
+// GenerateImage 生成图片
+func (s *PUMLService) GenerateImage(req *model.GenerateImageRequest) (*RenderResult, error) {
+	options := &RenderOptions{
+		Format:     req.Format,
+		UseCache:   true,
+		ServerMode: true,
+	}
+	if options.Format == "" {
+		options.Format = "png"
+	}
+
+	return s.RenderPUML(req.Content, options)
+}
+
+// ValidatePUMLString 验证PUML语法（重命名避免方法签名冲突）
+func (s *PUMLService) ValidatePUMLString(pumlCode string) *ValidationResult {
+	return s.ValidatePUML(pumlCode)
+}
+
+// ValidatePUMLFromRequest 验证PUML语法（适配controller接口）
+func (s *PUMLService) ValidatePUMLFromRequest(req *model.ValidatePUMLRequest) (*ValidationResult, error) {
+	result := s.ValidatePUML(req.Content)
+	return result, nil
+}
+
+// PreviewPUML 预览PUML
+func (s *PUMLService) PreviewPUML(req *model.PreviewPUMLRequest) (*RenderResult, error) {
+	options := &RenderOptions{
+		Format:     "svg",
+		UseCache:   false, // 预览不使用缓存
+		ServerMode: true,
+	}
+
+	return s.RenderPUML(req.Content, options)
+}
+
+// ExportPUML 导出PUML
+func (s *PUMLService) ExportPUML(userID uuid.UUID, req *model.ExportPUMLRequest) (interface{}, error) {
+	// 这里应该根据format类型导出不同格式的文件
+	// 暂时返回基本响应
+	return map[string]interface{}{
+		"exported_count": len(req.PUMLIDs),
+		"format":        req.Format,
+		"user_id":       userID,
+	}, nil
+}
+
+// GetPUMLStats 获取PUML统计信息
+func (s *PUMLService) GetPUMLStats(userID uuid.UUID) (interface{}, error) {
+	// 这里应该调用repository层获取统计数据
+	return map[string]interface{}{
+		"total_diagrams": 0,
+		"user_id":       userID,
+		"cache_stats":   s.GetCacheStats(),
+	}, nil
+}
+
+// ClearPUMLCache 清空PUML缓存
+func (s *PUMLService) ClearPUMLCache(userID uuid.UUID) error {
+	s.ClearCache()
+	return nil
 } 

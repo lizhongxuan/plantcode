@@ -14,6 +14,7 @@ import AIAnalysis from '@/pages/AIAnalysis';
 import Chat from '@/pages/Chat';
 import Settings from '@/pages/Settings';
 import ProjectDetail from '@/pages/ProjectDetail';
+import ProjectSpecWorkflow from '@/pages/ProjectSpecWorkflow';
 
 const App: React.FC = () => {
   const { isAuthenticated, setAuth, clearAuth } = useAuthStore();
@@ -21,6 +22,27 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const validateAuth = async () => {
+      // 先从zustand持久化存储中获取认证状态
+      const persistedAuth = useAuthStore.getState();
+      
+      // 如果已经有认证状态且token存在，直接使用
+      if (persistedAuth.isAuthenticated && persistedAuth.token) {
+        try {
+          // 验证token的有效性
+          const user = await authApi.validateToken();
+          // token有效，确保认证状态正确
+          setAuth(user, persistedAuth.token);
+        } catch (error) {
+          // token无效，清除认证状态
+          console.warn('Token validation failed:', error);
+          clearAuth();
+        } finally {
+          setIsInitializing(false);
+        }
+        return;
+      }
+
+      // 如果没有持久化的认证状态，检查localStorage中的token
       const token = localStorage.getItem('auth_token');
       
       if (!token) {
@@ -90,9 +112,12 @@ const App: React.FC = () => {
         <Route path="projects" element={<ProjectList />} />
         <Route path="projects/new" element={<CreateProject />} />
         
-        {/* 项目功能路由 - 新的集成式项目详情页面 */}
+        {/* 项目功能路由 */}
         <Route path="projects/:projectId" element={<ProjectDetail />} />
         <Route path="projects/:projectId/edit" element={<EditProject />} />
+        
+        {/* Spec 工作流路由 */}
+        <Route path="projects/:projectId/spec" element={<ProjectSpecWorkflow />} />
         
         {/* 保留原有AI功能路由（向后兼容） */}
         <Route path="project/:projectId/ai-analysis" element={<AIAnalysis />} />

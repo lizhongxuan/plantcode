@@ -43,12 +43,13 @@ func (s *TestSuite) SetupSuite() {
 			ExpiresIn: 86400, // 24小时，避免立即过期
 		},
 		AI: config.AIConfig{
-			Provider:     "openai",
-			OpenAIKey:    "test-key",
-			Timeout:      30,
-			MaxRetries:   3,
-			DefaultModel: "gpt-3.5-turbo",
-			MaxTokens:    2048,
+			DefaultProvider: "openai",
+			EnableCache:     true,
+			CacheTTL:        300,
+			OpenAIConfig: &config.OpenAIConfig{
+				APIKey:       "test-key",
+				DefaultModel: "gpt-3.5-turbo",
+			},
 		},
 		CORS: config.CORSConfig{
 			Origins:     []string{"http://localhost:3000"},

@@ -1,5 +1,31 @@
 # AI辅助项目开发平台 - API接口设计
 
+> **最后更新：2025-01-24**
+> **文档版本：v1.1**
+> **状态：根据requirements_todo.md同步更新**
+
+## 项目当前API实现状态
+
+### ✅ 已实现的接口
+- 用户认证接口 (JWT)
+- 项目管理CRUD接口
+- AI对话和消息接口  
+- PUML图表生成和渲染接口
+- 需求分析接口
+- 异步任务状态查询接口
+
+### 🚧 正在实现的接口
+- Spec工作流接口 (`/api/projects/{id}/spec/*`) - 刚完成CreateRequirements
+- Claude API集成接口
+
+### ❌ 待实现的接口  
+- 知识库RAG检索接口
+- API文档自动生成接口
+- 测试用例生成接口
+- 代码生成和导出接口
+
+---
+
 ## 1. API设计原则
 
 ### 1.1 RESTful设计
@@ -624,9 +650,185 @@ Content-Type: application/json
 | 1009 | 502 | 外部服务错误 | AI服务或其他外部服务不可用 |
 | 1010 | 503 | 服务不可用 | 服务正在维护或临时不可用 |
 
+## 新增接口设计 (基于requirements_todo.md)
+
+### 14. Spec工作流接口 ✨ **NEW**
+
+#### 14.1 生成需求文档
+```http
+POST /api/projects/{project_id}/spec/requirements
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "initial_prompt": "开发一个电商平台，支持商城功能",
+  "project_type": "web_application", 
+  "target_audience": "C端用户和商家",
+  "business_goals": ["提高销售转化率", "优化用户体验"]
+}
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid-here",
+    "project_id": "uuid-here", 
+    "content": "# 需求文档\n## 功能需求\n...",
+    "user_stories": [
+      {
+        "title": "用户注册登录",
+        "description": "作为用户，我希望能够注册和登录账户",
+        "acceptance_criteria": ["邮箱验证", "密码强度检查"],
+        "priority": "high",
+        "story_points": 5
+      }
+    ],
+    "functional_requirements": ["用户认证", "商品展示"],
+    "non_functional_requirements": ["响应时间<2s", "并发1000用户"],
+    "assumptions": ["用户已有邮箱", "支付接口可用"],
+    "edge_cases": ["网络中断处理", "库存不足场景"],
+    "version": 1,
+    "created_at": "2025-01-24T00:00:00Z"
+  },
+  "message": "Requirements document generated successfully"
+}
+```
+
+#### 14.2 生成设计文档 
+```http
+POST /api/projects/{project_id}/spec/design
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "requirements_id": "uuid-here",
+  "focus_areas": ["数据库设计", "API架构"],
+  "architecture_style": "microservices"
+}
+```
+
+#### 14.3 生成任务列表
+```http  
+POST /api/projects/{project_id}/spec/tasks
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "requirements_id": "uuid-here",
+  "design_id": "uuid-here", 
+  "team_size": 5,
+  "sprint_duration": 2
+}
+```
+
+### 15. 知识库RAG接口 📚 **PLANNED**
+
+#### 15.1 搜索知识库
+```http
+GET /api/knowledge/search?q=微服务架构&category=architecture&limit=10
+Authorization: Bearer <token>
+```
+
+#### 15.2 上传知识文档
+```http
+POST /api/knowledge/documents
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+{
+  "file": "architecture_patterns.pdf",
+  "category": "architecture",
+  "tags": ["microservices", "design_patterns"]
+}
+```
+
+### 16. AI配置管理接口 ⚙️ **UPDATED**
+
+#### 16.1 获取用户AI配置
+```http
+GET /api/ai/config
+Authorization: Bearer <token>
+```
+
+**响应**：
+```json
+{
+  "success": true,
+  "data": {
+    "openai_config": {
+      "api_key": "sk-***",
+      "model": "gpt-4",
+      "base_url": "https://api.openai.com"
+    },
+    "claude_config": {
+      "api_key": "sk-ant-***", 
+      "model": "claude-3-sonnet",
+      "base_url": "https://api.anthropic.com"
+    },
+    "gemini_config": {
+      "api_key": "AI***",
+      "model": "gemini-pro",
+      "base_url": "https://generativelanguage.googleapis.com"
+    },
+    "default_provider": "openai"
+  }
+}
+```
+
+#### 16.2 更新AI配置
+```http
+PUT /api/ai/config
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "claude_config": {
+    "api_key": "sk-ant-new-key",
+    "model": "claude-3-opus"
+  },
+  "default_provider": "claude"
+}
+```
+
+#### 16.3 测试AI连接
+```http
+POST /api/ai/test-connection
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "provider": "claude",
+  "config": {
+    "api_key": "sk-ant-test",
+    "model": "claude-3-sonnet"
+  }
+}
+
 ## 13. API限流规则
 
 - **认证接口**：每分钟最多5次请求
 - **AI接口**：每分钟最多10次请求  
 - **普通业务接口**：每分钟最多100次请求
-- **文件上传接口**：每小时最多50次请求 
+- **文件上传接口**：每小时最多50次请求
+
+---
+
+## 📋 API开发优先级
+
+### 高优先级 (本周完成)
+1. **Spec工作流接口** - CreateDesign, CreateTasks实现
+2. **Claude API集成** - claude_client.go完整实现
+
+### 中优先级 (下周完成)  
+3. **知识库RAG接口** - 搜索和上传功能
+4. **AI配置测试接口** - 连接测试和验证
+
+### 低优先级 (后续迭代)
+5. **API文档自动生成** - OpenAPI集成
+6. **测试用例生成接口** - 自动化测试支持
+
+---
+
+*本文档与 `/docs/requirements_todo.md` 保持同步*

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"ai-dev-platform/internal/config"
@@ -15,19 +16,19 @@ import (
 type UserService interface {
 	// 注册用户
 	RegisterUser(req *model.CreateUserRequest) (*model.User, error)
-	
+
 	// 用户登录
 	LoginUser(req *model.LoginRequest) (*LoginResponse, error)
-	
+
 	// 验证JWT令牌
 	ValidateToken(token string) (*model.User, error)
-	
+
 	// 获取用户信息
 	GetUser(userID uuid.UUID) (*model.User, error)
-	
+
 	// 更新用户信息
 	UpdateUser(userID uuid.UUID, updates *UserUpdateRequest) (*model.User, error)
-	
+
 	// 更新用户最后登录时间
 	UpdateLastLogin(userID uuid.UUID) error
 }
@@ -212,7 +213,7 @@ func (s *userService) UpdateUser(userID uuid.UUID, updates *UserUpdateRequest) (
 		if !utils.ValidateEmail(email) {
 			return nil, fmt.Errorf("邮箱格式无效")
 		}
-		
+
 		// 检查邮箱是否已被其他用户使用
 		if email != user.Email {
 			existingUser, _ := s.repo.GetUserByEmail(email)
@@ -279,39 +280,41 @@ func (s *userService) validateUserInput(req *model.CreateUserRequest) error {
 type ProjectService interface {
 	// 创建项目
 	CreateProject(userID uuid.UUID, req *model.CreateProjectRequest) (*model.Project, error)
-	
+
 	// 获取用户项目列表
 	GetUserProjects(userID uuid.UUID, page, pageSize int) ([]*model.Project, utils.PaginationInfo, error)
-	
+
 	// 获取项目详情
 	GetProject(projectID uuid.UUID, userID uuid.UUID) (*model.Project, error)
-	
+
 	// 更新项目
 	UpdateProject(projectID uuid.UUID, userID uuid.UUID, updates *ProjectUpdateRequest) (*model.Project, error)
-	
+
 	// 删除项目
 	DeleteProject(projectID uuid.UUID, userID uuid.UUID) error
 }
 
 // ProjectUpdateRequest 项目更新请求
 type ProjectUpdateRequest struct {
-	ProjectName           *string `json:"project_name,omitempty"`
-	Description           *string `json:"description,omitempty"`
-	ProjectType           *string `json:"project_type,omitempty"`
-	Status                *string `json:"status,omitempty"`
-	CompletionPercentage  *int    `json:"completion_percentage,omitempty"`
-	Settings              *string `json:"settings,omitempty"`
+	ProjectName          *string `json:"project_name,omitempty"`
+	Description          *string `json:"description,omitempty"`
+	ProjectType          *string `json:"project_type,omitempty"`
+	Status               *string `json:"status,omitempty"`
+	CompletionPercentage *int    `json:"completion_percentage,omitempty"`
+	Settings             *string `json:"settings,omitempty"`
 }
 
 // projectService 项目服务实现
 type projectService struct {
-	repo repository.Repository
+	repo          repository.Repository
+	folderService *ProjectFolderService
 }
 
 // NewProjectService 创建项目服务
-func NewProjectService(repo repository.Repository) ProjectService {
+func NewProjectService(repo repository.Repository, folderService *ProjectFolderService) ProjectService {
 	return &projectService{
-		repo: repo,
+		repo:          repo,
+		folderService: folderService,
 	}
 }
 
@@ -336,7 +339,17 @@ func (s *projectService) CreateProject(userID uuid.UUID, req *model.CreateProjec
 
 	// 保存到数据库
 	if err := s.repo.CreateProject(project); err != nil {
-		return nil, fmt.Errorf("创建项目失败: %w", err)
+		return nil, err
+	}
+
+	// 自动创建三个阶段文件夹（requirements, design, tasks）
+	if s.folderService != nil {
+		ctx := context.Background()
+		if _, err := s.folderService.CreateProjectFolders(ctx, project.ProjectID); err != nil {
+			// 如果文件夹创建失败，记录错误但不影响项目创建
+			// 可以考虑删除已创建的项目或者返回错误，根据业务需求决定
+			fmt.Printf("Warning: Failed to create project folders for project %s: %v\n", project.ProjectID, err)
+		}
 	}
 
 	return project, nil
@@ -477,4 +490,4 @@ func (s *projectService) validateProjectInput(req *model.CreateProjectRequest) e
 	}
 
 	return nil
-} 
+}

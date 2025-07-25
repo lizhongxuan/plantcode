@@ -8,7 +8,6 @@ import {
   Space, 
   Spin, 
   Divider,
-  Tag,
   Avatar,
   message 
 } from 'antd';
@@ -134,7 +133,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   };
 
   // 生成操作按钮
-  const generateActions = (data: any, context: string) => {
+  const generateActions = (_data: any, context: string) => {
     const actions = [];
 
     // 根据上下文和AI响应生成不同的操作

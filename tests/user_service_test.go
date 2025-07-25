@@ -22,13 +22,9 @@ type UserServiceTestSuite struct {
 func (s *UserServiceTestSuite) SetupSuite() {
 	s.TestSuite.SetupSuite()
 	
-	// 从GORM获取SQL数据库连接
-	sqlDB, err := s.DB.DB()
-	s.Require().NoError(err)
-	
 	// 创建Database实例
 	db := &repository.Database{
-		MySQL: sqlDB,
+		GORM: s.DB,
 		Redis: nil, // 测试中不使用Redis
 	}
 	

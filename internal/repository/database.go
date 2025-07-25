@@ -2,50 +2,58 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"ai-dev-platform/internal/config"
 	"ai-dev-platform/internal/model"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // Database 数据库连接结构
 type Database struct {
-	MySQL *sql.DB
+	GORM  *gorm.DB
 	Redis *redis.Client
 }
 
 // NewDatabase 创建数据库连接
 func NewDatabase(cfg *config.Config) (*Database, error) {
-	// 连接MySQL
-	log.Printf("连接MySQL: %v", cfg.GetDSN())
-	mysql, err := sql.Open("mysql", cfg.GetDSN())
-	if err != nil {
-		log.Printf("警告: 连接MySQL失败: %v", err)
-		log.Printf("提示: 请确保MySQL服务已启动并且密码正确")
-		// 不返回错误，允许应用继续启动
-		mysql = nil
-		panic("警告: MySQL连接测试失败")
-	} else {
-		// 配置连接池
-		mysql.SetMaxOpenConns(cfg.Database.MaxConnections)
-		mysql.SetMaxIdleConns(cfg.Database.MaxIdleConn)
-		mysql.SetConnMaxLifetime(time.Duration(cfg.Database.ConnMaxLifetime) * time.Second)
+	var gormDB *gorm.DB
+	var err error
 
-		// 测试连接
-		if err := mysql.Ping(); err != nil {
-			log.Printf("提示: 请检查MySQL服务状态和配置")
-			mysql = nil
-			panic("警告: MySQL连接测试失败")
-		}
+	// 配置 GORM 日志级别
+	var gormLogLevel logger.LogLevel
+	if cfg.IsDevelopment() {
+		gormLogLevel = logger.Info
+	} else {
+		gormLogLevel = logger.Error
 	}
+
+	// 使用 GORM 连接 MySQL
+	log.Printf("连接MySQL (GORM): %v", cfg.GetDSN())
+	gormDB, err = gorm.Open(mysql.Open(cfg.GetDSN()), &gorm.Config{
+		Logger: logger.Default.LogMode(gormLogLevel),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GORM MySQL连接失败: %w", err)
+	}
+
+	// 获取底层的 *sql.DB 以配置连接池
+	sqlDB, err := gormDB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("获取GORM底层SQL连接失败: %w", err)
+	}
+
+	// 配置连接池
+	sqlDB.SetMaxOpenConns(cfg.Database.MaxConnections)
+	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConn)
+	sqlDB.SetConnMaxLifetime(time.Duration(cfg.Database.ConnMaxLifetime) * time.Second)
 
 	// 连接Redis
 	redisClient := redis.NewClient(&redis.Options{
@@ -63,11 +71,14 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 		log.Printf("警告: Redis连接失败: %v", err)
 		log.Printf("提示: 请安装并启动Redis服务")
 		// Redis连接失败不影响主要功能，只记录日志
-		panic("警告: Redis连接失败")
+		if cfg.IsProduction() {
+			return nil, fmt.Errorf("生产环境: Redis连接失败: %w", err)
+		}
+		redisClient = nil
 	}
 
 	return &Database{
-		MySQL: mysql,
+		GORM:  gormDB,
 		Redis: redisClient,
 	}, nil
 }
@@ -76,9 +87,13 @@ func NewDatabase(cfg *config.Config) (*Database, error) {
 func (db *Database) Close() error {
 	var err error
 
-	if db.MySQL != nil {
-		if mysqlErr := db.MySQL.Close(); mysqlErr != nil {
-			err = fmt.Errorf("关闭MySQL连接失败: %w", mysqlErr)
+	// 关闭 GORM 连接
+	if db.GORM != nil {
+		sqlDB, gormErr := db.GORM.DB()
+		if gormErr == nil {
+			if mysqlErr := sqlDB.Close(); mysqlErr != nil {
+				err = fmt.Errorf("关闭GORM MySQL连接失败: %w", mysqlErr)
+			}
 		}
 	}
 
@@ -97,216 +112,31 @@ func (db *Database) Close() error {
 
 // CreateTables 创建所有必要的数据表
 func (db *Database) CreateTables() error {
-	tables := []string{
-		// 用户表
-		`CREATE TABLE IF NOT EXISTS users (
-			user_id VARCHAR(36) PRIMARY KEY,
-			username VARCHAR(50) UNIQUE NOT NULL,
-			email VARCHAR(100) UNIQUE NOT NULL,
-			password_hash VARCHAR(255) NOT NULL,
-			full_name VARCHAR(100) NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			last_login TIMESTAMP NULL,
-			status ENUM('active', 'inactive', 'deleted') DEFAULT 'active',
-			preferences JSON,
-			INDEX idx_username (username),
-			INDEX idx_email (email),
-			INDEX idx_status (status)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 项目表
-		`CREATE TABLE IF NOT EXISTS projects (
-			project_id VARCHAR(36) PRIMARY KEY,
-			user_id VARCHAR(36) NOT NULL,
-			project_name VARCHAR(100) NOT NULL,
-			description TEXT,
-			project_type ENUM('web', 'mobile', 'desktop', 'api', 'other') DEFAULT 'web',
-			status ENUM('planning', 'active', 'completed', 'archived') DEFAULT 'planning',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			completion_percentage INT DEFAULT 0,
-			settings JSON,
-			FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-			INDEX idx_user_id (user_id),
-			INDEX idx_status (status),
-			INDEX idx_project_type (project_type),
-			INDEX idx_created_at (created_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 需求分析表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS requirement_analyses (
-			requirement_id VARCHAR(36) PRIMARY KEY,
-			project_id VARCHAR(36) NOT NULL,
-			raw_requirement TEXT NOT NULL,
-			structured_requirement JSON,
-			completeness_score INT DEFAULT 0,
-			analysis_status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
-			missing_info_types JSON,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-			INDEX idx_project_id (project_id),
-			INDEX idx_status (analysis_status),
-			INDEX idx_created_at (created_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 对话会话表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS chat_sessions (
-			session_id VARCHAR(36) PRIMARY KEY,
-			project_id VARCHAR(36) NOT NULL,
-			user_id VARCHAR(36) NOT NULL,
-			session_type ENUM('requirement_analysis', 'technical_guidance', 'code_review') DEFAULT 'requirement_analysis',
-			started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			ended_at TIMESTAMP NULL,
-			status ENUM('active', 'completed', 'cancelled') DEFAULT 'active',
-			context JSON,
-			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-			FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-			INDEX idx_project_id (project_id),
-			INDEX idx_user_id (user_id),
-			INDEX idx_status (status),
-			INDEX idx_started_at (started_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 对话消息表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS chat_messages (
-			message_id VARCHAR(36) PRIMARY KEY,
-			session_id VARCHAR(36) NOT NULL,
-			sender_type ENUM('user', 'assistant', 'system') NOT NULL,
-			message_content TEXT NOT NULL,
-			message_type ENUM('text', 'code', 'image', 'file') DEFAULT 'text',
-			metadata JSON,
-			timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			processed BOOLEAN DEFAULT FALSE,
-			FOREIGN KEY (session_id) REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
-			INDEX idx_session_id (session_id),
-			INDEX idx_timestamp (timestamp),
-			INDEX idx_sender_type (sender_type)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 补充问题表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS questions (
-			question_id VARCHAR(36) PRIMARY KEY,
-			requirement_id VARCHAR(36) NOT NULL,
-			question_text TEXT NOT NULL,
-			question_category ENUM('functionality', 'technical', 'business', 'ui_ux', 'integration') NOT NULL,
-			priority_level INT DEFAULT 1,
-			answer_text TEXT,
-			answer_status ENUM('pending', 'answered', 'skipped') DEFAULT 'pending',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			answered_at TIMESTAMP NULL,
-			FOREIGN KEY (requirement_id) REFERENCES requirement_analyses(requirement_id) ON DELETE CASCADE,
-			INDEX idx_requirement_id (requirement_id),
-			INDEX idx_status (answer_status),
-			INDEX idx_priority (priority_level),
-			INDEX idx_created_at (created_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// PUML图表表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS puml_diagrams (
-			diagram_id VARCHAR(36) PRIMARY KEY,
-			project_id VARCHAR(36) NOT NULL,
-			diagram_type ENUM('class', 'sequence', 'usecase', 'activity', 'component', 'deployment') NOT NULL,
-			diagram_name VARCHAR(100) NOT NULL,
-			puml_content TEXT NOT NULL,
-			rendered_url VARCHAR(500),
-			version INT DEFAULT 1,
-			is_validated BOOLEAN DEFAULT FALSE,
-			validation_feedback TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-			INDEX idx_project_id (project_id),
-			INDEX idx_diagram_type (diagram_type),
-			INDEX idx_version (version),
-			INDEX idx_created_at (created_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 生成文档表 (第二阶段新增)
-		`CREATE TABLE IF NOT EXISTS generated_documents (
-			document_id VARCHAR(36) PRIMARY KEY,
-			project_id VARCHAR(36) NOT NULL,
-			document_type ENUM('api_spec', 'technical_design', 'user_guide', 'deployment_guide', 'development_plan') NOT NULL,
-			document_name VARCHAR(100) NOT NULL,
-			content LONGTEXT NOT NULL,
-			format ENUM('markdown', 'html', 'pdf', 'json') DEFAULT 'markdown',
-			file_path VARCHAR(500),
-			version INT DEFAULT 1,
-			generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			is_final BOOLEAN DEFAULT FALSE,
-			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-			INDEX idx_project_id (project_id),
-			INDEX idx_document_type (document_type),
-			INDEX idx_version (version),
-			INDEX idx_generated_at (generated_at)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 业务模块表 (保留现有)
-		`CREATE TABLE IF NOT EXISTS business_modules (
-			module_id VARCHAR(36) PRIMARY KEY,
-			project_id VARCHAR(36) NOT NULL,
-			module_name VARCHAR(100) NOT NULL,
-			module_type ENUM('frontend', 'backend', 'database', 'api', 'service') NOT NULL,
-			description TEXT,
-			dependencies JSON,
-			status ENUM('planned', 'in_progress', 'completed', 'tested') DEFAULT 'planned',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-			INDEX idx_project_id (project_id),
-			INDEX idx_module_type (module_type),
-			INDEX idx_status (status)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 通用模块表 (保留现有)
-		`CREATE TABLE IF NOT EXISTS common_modules (
-			module_id VARCHAR(36) PRIMARY KEY,
-			module_name VARCHAR(100) NOT NULL,
-			category VARCHAR(50) NOT NULL,
-			description TEXT,
-			template_code TEXT,
-			configuration JSON,
-			popularity_score INT DEFAULT 0,
-			is_verified BOOLEAN DEFAULT FALSE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			INDEX idx_category (category),
-			INDEX idx_popularity (popularity_score),
-			INDEX idx_verified (is_verified)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
-
-		// 用户AI配置表 (第三阶段新增)
-		`CREATE TABLE IF NOT EXISTS user_ai_configs (
-			config_id VARCHAR(36) PRIMARY KEY,
-			user_id VARCHAR(36) NOT NULL,
-			provider ENUM('openai', 'claude', 'gemini') NOT NULL DEFAULT 'openai',
-			openai_api_key VARCHAR(255) NULL,
-			claude_api_key VARCHAR(255) NULL,
-			gemini_api_key VARCHAR(255) NULL,
-			default_model VARCHAR(100) NOT NULL DEFAULT 'gpt-4',
-			max_tokens INT NOT NULL DEFAULT 2048,
-			is_active BOOLEAN DEFAULT TRUE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-			INDEX idx_user_id (user_id),
-			INDEX idx_provider (provider),
-			INDEX idx_is_active (is_active),
-			UNIQUE KEY unique_user_active (user_id, is_active)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+	if db.GORM == nil {
+		return fmt.Errorf("GORM数据库连接不可用")
 	}
 
-	if db.MySQL == nil {
-		return fmt.Errorf("MySQL数据库连接不可用")
+	// 使用 GORM 自动迁移创建表
+	err := db.GORM.AutoMigrate(
+		&model.User{},
+		&model.Project{},
+		&model.Requirement{},
+		&model.ChatSession{},
+		&model.ChatMessage{},
+		&model.Question{},
+		&model.PUMLDiagram{},
+		&model.Document{},
+		&model.BusinessModule{},
+		&model.CommonModule{},
+		&model.StageProgress{},
+		&model.UserAIConfig{},
+		&model.AsyncTask{},
+	)
+	if err != nil {
+		return fmt.Errorf("GORM 自动迁移失败: %w", err)
 	}
 
-	for _, table := range tables {
-		if _, err := db.MySQL.Exec(table); err != nil {
-			return fmt.Errorf("创建表失败: %w", err)
-		}
-	}
-
+	log.Println("GORM 数据表自动迁移完成")
 	return nil
 }
 
@@ -314,11 +144,16 @@ func (db *Database) CreateTables() error {
 func (db *Database) Health() error {
 	var errors []string
 
-	// 检查MySQL
-	if db.MySQL == nil {
-		errors = append(errors, "MySQL连接不存在")
-	} else if err := db.MySQL.Ping(); err != nil {
-		errors = append(errors, fmt.Sprintf("MySQL连接异常: %v", err))
+	// 检查GORM连接
+	if db.GORM == nil {
+		errors = append(errors, "GORM连接不存在")
+	} else {
+		sqlDB, err := db.GORM.DB()
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("获取GORM底层连接失败: %v", err))
+		} else if err := sqlDB.Ping(); err != nil {
+			errors = append(errors, fmt.Sprintf("GORM MySQL连接异常: %v", err))
+		}
 	}
 
 	// 检查Redis
@@ -332,7 +167,7 @@ func (db *Database) Health() error {
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("数据库健康检查失败: %s", strings.Join(errors, "; "))
+		return fmt.Errorf("数据库健康检查失败: %s", fmt.Sprintf("%v", errors))
 	}
 
 	return nil
@@ -408,6 +243,22 @@ type Repository interface {
 	UpdateStageProgress(progress *model.StageProgress) error
 	GetStageProgressByStage(projectID uuid.UUID, stage int) (*model.StageProgress, error)
 
+	// 用户AI配置相关
+	GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, error)
+	CreateUserAIConfig(config *model.UserAIConfig) error
+	UpdateUserAIConfig(config *model.UserAIConfig) error
+	DeleteUserAIConfig(userID uuid.UUID) error
+
+	// 扩展方法（用于兼容性）
+	GetRequirementAnalysis(analysisID uuid.UUID) (*model.Requirement, error)
+	GetRequirementAnalysesByProject(projectID uuid.UUID) ([]*model.Requirement, error)
+	GetChatSession(sessionID uuid.UUID) (*model.ChatSession, error)
+	GetChatSessionsByProject(projectID uuid.UUID) ([]*model.ChatSession, error)
+	GetChatMessages(sessionID uuid.UUID) ([]*model.ChatMessage, error)
+	GetPUMLDiagram(diagramID uuid.UUID) (*model.PUMLDiagram, error)
+	GetDocument(documentID uuid.UUID) (*model.Document, error)
+	GetQuestions(requirementID uuid.UUID) ([]*model.Question, error)
+
 	// 健康检查
 	Health() error
 }
@@ -420,86 +271,4 @@ type MySQLRepository struct {
 // NewMySQLRepository 创建MySQL仓库
 func NewMySQLRepository(db *Database) Repository {
 	return &MySQLRepository{db: db}
-}
-
-// convertNullTime 转换NULL时间
-func convertNullTime(t sql.NullTime) *time.Time {
-	if t.Valid {
-		return &t.Time
-	}
-	return nil
-}
-
-// convertTimePtr 转换时间指针
-func convertTimePtr(t *time.Time) sql.NullTime {
-	if t != nil {
-		return sql.NullTime{Time: *t, Valid: true}
-	}
-	return sql.NullTime{Valid: false}
-}
-
-// scanUser 扫描用户数据
-func scanUser(row *sql.Row) (*model.User, error) {
-	var user model.User
-	var lastLogin sql.NullTime
-	var preferences sql.NullString
-
-	err := row.Scan(
-		&user.UserID,
-		&user.Username,
-		&user.Email,
-		&user.PasswordHash,
-		&user.FullName,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-		&lastLogin,
-		&user.Status,
-		&preferences,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	user.LastLogin = convertNullTime(lastLogin)
-	if preferences.Valid {
-		user.Preferences = preferences.String
-	}
-
-	return &user, nil
-}
-
-// scanUsers 扫描多个用户数据
-func scanUsers(rows *sql.Rows) ([]*model.User, error) {
-	var users []*model.User
-
-	for rows.Next() {
-		var user model.User
-		var lastLogin sql.NullTime
-		var preferences sql.NullString
-
-		err := rows.Scan(
-			&user.UserID,
-			&user.Username,
-			&user.Email,
-			&user.PasswordHash,
-			&user.FullName,
-			&user.CreatedAt,
-			&user.UpdatedAt,
-			&lastLogin,
-			&user.Status,
-			&preferences,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		user.LastLogin = convertNullTime(lastLogin)
-		if preferences.Valid {
-			user.Preferences = preferences.String
-		}
-
-		users = append(users, &user)
-	}
-
-	return users, nil
 }

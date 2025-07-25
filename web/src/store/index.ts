@@ -63,11 +63,38 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-store',
+      // 存储所有认证相关状态
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
         user: state.user,
         token: state.token,
       }),
+      // 添加storage选项，确保在SSR环境下正常工作
+      storage: {
+        getItem: (name) => {
+          try {
+            const item = localStorage.getItem(name);
+            return item ? JSON.parse(item) : null;
+          } catch (error) {
+            console.warn('Failed to get item from localStorage:', error);
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch (error) {
+            console.warn('Failed to set item to localStorage:', error);
+          }
+        },
+        removeItem: (name) => {
+          try {
+            localStorage.removeItem(name);
+          } catch (error) {
+            console.warn('Failed to remove item from localStorage:', error);
+          }
+        },
+      },
     }
   )
 );

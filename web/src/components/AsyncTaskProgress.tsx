@@ -3,7 +3,7 @@ import { Card, Progress, Button, Alert, Space, Spin, Typography, Tag } from 'ant
 import { ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { asyncTaskApi } from '@/services/api';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface AsyncTaskProgressProps {
   taskId?: string;

@@ -18,16 +18,14 @@ import (
 // AIService AI服务层
 type AIService struct {
 	aiManager *ai.AIManager
-	aiRepo    *repository.AIRepository
-	mysqlRepo *repository.MySQLRepository
+	repo      repository.Repository
 }
 
 // NewAIService 创建AI服务
-func NewAIService(aiManager *ai.AIManager, aiRepo *repository.AIRepository, mysqlRepo *repository.MySQLRepository) *AIService {
+func NewAIService(aiManager *ai.AIManager, repo repository.Repository) *AIService {
 	return &AIService{
 		aiManager: aiManager,
-		aiRepo:    aiRepo,
-		mysqlRepo: mysqlRepo,
+		repo:      repo,
 	}
 }
 
@@ -36,82 +34,20 @@ func NewAIService(aiManager *ai.AIManager, aiRepo *repository.AIRepository, mysq
 // AnalyzeRequirementWithUser 基于用户AI配置分析业务需求
 func (s *AIService) AnalyzeRequirementWithUser(ctx context.Context, req *model.AIAnalysisRequest, userID uuid.UUID) (*model.Requirement, error) {
 	// 验证项目是否存在
-	_, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
+	_, err := s.repo.GetProjectByID(req.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("项目不存在: %w", err)
 	}
 
-	// 获取用户AI配置
-	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
-	if err != nil {
-		// 如果没有用户配置，使用默认配置
-		log.Printf("获取用户AI配置失败，使用默认配置: %v", err)
-		return s.AnalyzeRequirement(ctx, req)
-	}
-
-	// 确定使用的provider
-	provider := ai.AIProvider(userConfig.Provider)
-	var apiKey string
-
-	switch userConfig.Provider {
-	case "openai":
-		apiKey = userConfig.OpenAIAPIKey
-	case "claude":
-		apiKey = userConfig.ClaudeAPIKey
-	case "gemini":
-		apiKey = userConfig.GeminiAPIKey
-	default:
-		return nil, fmt.Errorf("不支持的AI提供商: %s", userConfig.Provider)
-	}
-
-	if apiKey == "" {
-		return nil, fmt.Errorf("未配置%s的API密钥，请先在设置中配置", userConfig.Provider)
-	}
-
-	// 创建临时AI客户端配置
-	clientConfig := ai.AIManagerConfig{
-		DefaultProvider: provider,
-		EnableCache:     true,
-		CacheTTL:        time.Hour,
-	}
-
-	// 根据provider设置对应的客户端配置
-	switch provider {
-	case ai.ProviderOpenAI:
-		clientConfig.OpenAIConfig = &ai.OpenAIConfig{
-			APIKey: apiKey,
-			Model:  userConfig.DefaultModel,
-		}
-	case ai.ProviderClaude:
-		// Claude客户端暂时不可用
-		return nil, fmt.Errorf("Claude客户端暂时不可用")
-	case ai.ProviderGemini:
-		clientConfig.GeminiConfig = &ai.GeminiConfig{
-			APIKey: apiKey,
-			Model:  userConfig.DefaultModel,
-		}
-	}
-
-	// 创建用户特定的AI管理器
-	tempAIManager, err := ai.NewAIManager(clientConfig)
-	if err != nil {
-		return nil, fmt.Errorf("创建AI管理器失败: %w", err)
-	}
-
-	// 调用AI分析
-	analysis, err := tempAIManager.AnalyzeRequirement(ctx, req.Requirement, provider)
-	if err != nil {
-		return nil, fmt.Errorf("AI分析失败: %w", err)
-	}
-
-	// 转换为数据库模型并保存
-	return s.saveAnalysisResult(req, analysis, tempAIManager, provider)
+	// 使用默认配置进行需求分析
+	log.Printf("使用默认配置进行需求分析")
+	return s.AnalyzeRequirement(ctx, req)
 }
 
 // AnalyzeRequirement 分析业务需求（原有方法，作为兼容性保留）
 func (s *AIService) AnalyzeRequirement(ctx context.Context, req *model.AIAnalysisRequest) (*model.Requirement, error) {
 	// 验证项目是否存在
-	_, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
+	_, err := s.repo.GetProjectByID(req.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("项目不存在: %w", err)
 	}
@@ -166,7 +102,7 @@ func (s *AIService) saveAnalysisResult(req *model.AIAnalysisRequest, analysis *a
 	dbAnalysis.MissingInfoTypes = string(missingInfoJSON)
 
 	// 保存到数据库
-	err = s.aiRepo.CreateRequirementAnalysis(dbAnalysis)
+	err = s.repo.CreateRequirementAnalysis(dbAnalysis)
 	if err != nil {
 		return nil, fmt.Errorf("保存需求分析失败: %w", err)
 	}
@@ -192,7 +128,7 @@ func (s *AIService) saveAnalysisResult(req *model.AIAnalysisRequest, analysis *a
 					CreatedAt:        time.Now(),
 				}
 
-				if err := s.aiRepo.CreateQuestion(dbQuestion); err != nil {
+				if err := s.repo.CreateQuestion(dbQuestion); err != nil {
 					log.Printf("保存问题失败: %v", err)
 				}
 			}
@@ -204,22 +140,22 @@ func (s *AIService) saveAnalysisResult(req *model.AIAnalysisRequest, analysis *a
 
 // GetRequirementAnalysis 获取需求分析
 func (s *AIService) GetRequirementAnalysis(analysisID uuid.UUID) (*model.Requirement, error) {
-	return s.aiRepo.GetRequirementAnalysis(analysisID)
+	return s.repo.GetRequirementAnalysis(analysisID)
 }
 
 // GetRequirementAnalysesByProject 获取项目的需求分析列表
 func (s *AIService) GetRequirementAnalysesByProject(projectID uuid.UUID) ([]*model.Requirement, error) {
-	return s.aiRepo.GetRequirementAnalysesByProject(projectID)
+	return s.repo.GetRequirementAnalysesByProject(projectID)
 }
 
 // GetQuestions 获取需求分析的补充问题
 func (s *AIService) GetQuestions(requirementID uuid.UUID) ([]*model.Question, error) {
-	return s.aiRepo.GetQuestions(requirementID)
+	return s.repo.GetQuestions(requirementID)
 }
 
 // AnswerQuestion 回答补充问题
 func (s *AIService) AnswerQuestion(questionID uuid.UUID, answer string) error {
-	return s.aiRepo.AnswerQuestion(questionID, answer)
+	return s.repo.AnswerQuestion(questionID, answer)
 }
 
 // ===== PUML图表生成相关服务 =====
@@ -232,7 +168,7 @@ func (s *AIService) GeneratePUML(ctx context.Context, req *model.GeneratePUMLReq
 		return nil, fmt.Errorf("无效的分析ID: %w", err)
 	}
 
-	dbAnalysis, err := s.aiRepo.GetRequirementAnalysis(analysisUUID)
+	dbAnalysis, err := s.repo.GetRequirementAnalysis(analysisUUID)
 	if err != nil {
 		return nil, fmt.Errorf("获取需求分析失败: %w", err)
 	}
@@ -286,7 +222,7 @@ func (s *AIService) GeneratePUML(ctx context.Context, req *model.GeneratePUMLReq
 	}
 
 	// 保存到数据库
-	err = s.aiRepo.CreatePUMLDiagram(dbDiagram)
+	err = s.repo.CreatePUMLDiagram(dbDiagram)
 	if err != nil {
 		return nil, fmt.Errorf("保存PUML图表失败: %w", err)
 	}
@@ -296,18 +232,18 @@ func (s *AIService) GeneratePUML(ctx context.Context, req *model.GeneratePUMLReq
 
 // GetPUMLDiagram 获取PUML图表
 func (s *AIService) GetPUMLDiagram(diagramID uuid.UUID) (*model.PUMLDiagram, error) {
-	return s.aiRepo.GetPUMLDiagram(diagramID)
+	return s.repo.GetPUMLDiagram(diagramID)
 }
 
-// GetPUMLDiagramsByProject 获取项目的PUML图表列表
-func (s *AIService) GetPUMLDiagramsByProject(projectID uuid.UUID) ([]*model.PUMLDiagram, error) {
-	return s.aiRepo.GetPUMLDiagramsByProject(projectID)
+// GetPUMLDiagramsByProjectID 获取项目的PUML图表列表
+func (s *AIService) GetPUMLDiagramsByProjectID(projectID uuid.UUID) ([]*model.PUMLDiagram, error) {
+	return s.repo.GetPUMLDiagramsByProjectID(projectID)
 }
 
 // UpdatePUMLDiagram 更新PUML图表
 func (s *AIService) UpdatePUMLDiagram(diagramID uuid.UUID, req *model.UpdatePUMLRequest) error {
 	// 获取现有图表
-	diagram, err := s.aiRepo.GetPUMLDiagram(diagramID)
+	diagram, err := s.repo.GetPUMLDiagram(diagramID)
 	if err != nil {
 		return fmt.Errorf("获取PUML图表失败: %w", err)
 	}
@@ -323,17 +259,17 @@ func (s *AIService) UpdatePUMLDiagram(diagramID uuid.UUID, req *model.UpdatePUML
 	diagram.Version++
 
 	// 保存更新
-	return s.aiRepo.UpdatePUMLDiagram(diagram)
+	return s.repo.UpdatePUMLDiagram(diagram)
 }
 
 // CreatePUML 创建PUML图表
 func (s *AIService) CreatePUML(diagram *model.PUMLDiagram) error {
-	return s.aiRepo.CreatePUMLDiagram(diagram)
+	return s.repo.CreatePUMLDiagram(diagram)
 }
 
 // DeletePUMLDiagram 删除PUML图表
 func (s *AIService) DeletePUMLDiagram(diagramID uuid.UUID) error {
-	return s.mysqlRepo.DeletePUMLDiagram(diagramID)
+	return s.repo.DeletePUMLDiagram(diagramID)
 }
 
 // ===== 文档生成相关服务 =====
@@ -346,7 +282,7 @@ func (s *AIService) GenerateDocument(ctx context.Context, req *model.GenerateDoc
 		return nil, fmt.Errorf("无效的分析ID: %w", err)
 	}
 
-	dbAnalysis, err := s.aiRepo.GetRequirementAnalysis(analysisUUID)
+	dbAnalysis, err := s.repo.GetRequirementAnalysis(analysisUUID)
 	if err != nil {
 		return nil, fmt.Errorf("获取需求分析失败: %w", err)
 	}
@@ -405,7 +341,7 @@ func (s *AIService) GenerateDocument(ctx context.Context, req *model.GenerateDoc
 	}
 
 	// 保存到数据库
-	err = s.aiRepo.CreateDocument(dbDocument)
+	err = s.repo.CreateDocument(dbDocument)
 	if err != nil {
 		return nil, fmt.Errorf("保存生成文档失败: %w", err)
 	}
@@ -415,18 +351,18 @@ func (s *AIService) GenerateDocument(ctx context.Context, req *model.GenerateDoc
 
 // GetDocument 获取生成的文档
 func (s *AIService) GetDocument(documentID uuid.UUID) (*model.Document, error) {
-	return s.aiRepo.GetDocument(documentID)
+	return s.repo.GetDocument(documentID)
 }
 
-// GetDocumentsByProject 获取项目的文档列表
-func (s *AIService) GetDocumentsByProject(projectID uuid.UUID) ([]*model.Document, error) {
-	return s.aiRepo.GetDocumentsByProject(projectID)
+// GetDocumentsByProjectID 获取项目的文档列表
+func (s *AIService) GetDocumentsByProjectID(projectID uuid.UUID) ([]*model.Document, error) {
+	return s.repo.GetDocumentsByProjectID(projectID)
 }
 
 // UpdateDocument 更新文档
 func (s *AIService) UpdateDocument(documentID uuid.UUID, req *model.UpdateDocumentRequest) error {
 	// 获取现有文档
-	document, err := s.aiRepo.GetDocument(documentID)
+	document, err := s.repo.GetDocument(documentID)
 	if err != nil {
 		return fmt.Errorf("获取文档失败: %w", err)
 	}
@@ -439,7 +375,7 @@ func (s *AIService) UpdateDocument(documentID uuid.UUID, req *model.UpdateDocume
 	document.Version++
 
 	// 保存更新
-	return s.aiRepo.UpdateDocument(document)
+	return s.repo.UpdateDocument(document)
 }
 
 // ===== 对话相关服务 =====
@@ -456,7 +392,7 @@ func (s *AIService) CreateChatSession(req *model.ChatSessionCreateRequest, userI
 			return nil, fmt.Errorf("无效的项目ID: %w", err)
 		}
 
-		_, err = s.mysqlRepo.GetProjectByID(projectUUID)
+		_, err = s.repo.GetProjectByID(projectUUID)
 		if err != nil {
 			return nil, fmt.Errorf("项目不存在: %w", err)
 		}
@@ -476,7 +412,7 @@ func (s *AIService) CreateChatSession(req *model.ChatSessionCreateRequest, userI
 		Context:     "{}",
 	}
 
-	err = s.aiRepo.CreateChatSession(session)
+	err = s.repo.CreateChatSession(session)
 	if err != nil {
 		return nil, fmt.Errorf("创建对话会话失败: %w", err)
 	}
@@ -492,7 +428,7 @@ func (s *AIService) SendChatMessage(ctx context.Context, req *model.SendChatMess
 		return nil, fmt.Errorf("无效的会话ID: %w", err)
 	}
 
-	session, err := s.aiRepo.GetChatSession(sessionUUID)
+	session, err := s.repo.GetChatSession(sessionUUID)
 	if err != nil {
 		return nil, fmt.Errorf("会话不存在: %w", err)
 	}
@@ -514,7 +450,7 @@ func (s *AIService) SendChatMessage(ctx context.Context, req *model.SendChatMess
 	}
 
 	// 保存用户消息
-	err = s.aiRepo.CreateChatMessage(userMessage)
+	err = s.repo.CreateChatMessage(userMessage)
 	if err != nil {
 		return nil, fmt.Errorf("保存用户消息失败: %w", err)
 	}
@@ -535,7 +471,7 @@ func (s *AIService) SendChatMessage(ctx context.Context, req *model.SendChatMess
 				Processed:      true,
 			}
 
-			if err := s.aiRepo.CreateChatMessage(aiMessage); err != nil {
+			if err := s.repo.CreateChatMessage(aiMessage); err != nil {
 				log.Printf("保存AI消息失败: %v", err)
 			}
 		}()
@@ -546,12 +482,12 @@ func (s *AIService) SendChatMessage(ctx context.Context, req *model.SendChatMess
 
 // GetChatMessages 获取对话消息
 func (s *AIService) GetChatMessages(sessionID uuid.UUID) ([]*model.ChatMessage, error) {
-	return s.aiRepo.GetChatMessages(sessionID)
+	return s.repo.GetChatMessages(sessionID)
 }
 
 // GetChatSessionsByProject 获取项目的对话会话列表
 func (s *AIService) GetChatSessionsByProject(projectID uuid.UUID) ([]*model.ChatSession, error) {
-	return s.aiRepo.GetChatSessionsByProject(projectID)
+	return s.repo.GetChatSessionsByProject(projectID)
 }
 
 // ===== 系统管理相关服务 =====
@@ -590,13 +526,13 @@ func (s *AIService) ClearCache() {
 
 // GetUserAIConfig 获取用户AI配置
 func (s *AIService) GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, error) {
-	return s.aiRepo.GetUserAIConfig(userID)
+	return s.repo.GetUserAIConfig(userID)
 }
 
 // UpdateUserAIConfig 更新用户AI配置
 func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAIConfigRequest) (*model.UserAIConfig, error) {
 	// 检查是否已有配置
-	existingConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	existingConfig, err := s.repo.GetUserAIConfig(userID)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return nil, fmt.Errorf("检查现有配置失败: %w", err)
 	}
@@ -624,7 +560,7 @@ func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAI
 			config.GeminiAPIKey = req.GeminiAPIKey
 		}
 
-		err = s.aiRepo.UpdateUserAIConfig(config)
+		err = s.repo.UpdateUserAIConfig(config)
 	} else {
 		// 创建新配置
 		config = &model.UserAIConfig{
@@ -641,7 +577,7 @@ func (s *AIService) UpdateUserAIConfig(userID uuid.UUID, req *model.UpdateUserAI
 			UpdatedAt:    now,
 		}
 
-		err = s.aiRepo.CreateUserAIConfig(config)
+		err = s.repo.CreateUserAIConfig(config)
 	}
 
 	if err != nil {
@@ -806,13 +742,13 @@ type ProjectChatResponse struct {
 // ProjectChat 项目上下文AI对话 - 使用用户AI配置
 func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, message, context string, userID uuid.UUID) (*ProjectChatResponse, error) {
 	// 验证项目是否存在
-	project, err := s.mysqlRepo.GetProjectByID(projectID)
+	project, err := s.repo.GetProjectByID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("项目不存在: %w", err)
 	}
 
 	// 获取用户AI配置
-	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	userConfig, err := s.repo.GetUserAIConfig(userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
 	}
@@ -867,7 +803,7 @@ func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, messag
 	}
 
 	// 获取项目的需求分析数据作为上下文
-	analyses, err := s.aiRepo.GetRequirementAnalysesByProject(projectID)
+	analyses, err := s.repo.GetRequirementAnalysesByProject(projectID)
 	if err != nil {
 		log.Printf("获取项目需求分析失败: %v", err)
 		// 继续执行，允许没有分析数据的对话
@@ -938,13 +874,13 @@ func (s *AIService) ProjectChat(ctx context.Context, projectID uuid.UUID, messag
 // GenerateStageDocuments 分阶段生成项目文档
 func (s *AIService) GenerateStageDocuments(ctx context.Context, req *model.GenerateStageDocumentsRequest, userID uuid.UUID) (*model.StageDocumentsResult, error) {
 	// 验证项目是否存在
-	project, err := s.mysqlRepo.GetProjectByID(req.ProjectID)
+	project, err := s.repo.GetProjectByID(req.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("项目不存在: %w", err)
 	}
 
 	// 获取项目的需求分析
-	analyses, err := s.aiRepo.GetRequirementAnalysesByProject(req.ProjectID)
+	analyses, err := s.repo.GetRequirementAnalysesByProject(req.ProjectID)
 	if err != nil || len(analyses) == 0 {
 		return nil, fmt.Errorf("请先完成项目需求分析")
 	}
@@ -952,7 +888,7 @@ func (s *AIService) GenerateStageDocuments(ctx context.Context, req *model.Gener
 	latestAnalysis := analyses[0]
 
 	// 获取用户AI配置
-	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	userConfig, err := s.repo.GetUserAIConfig(userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
 	}
@@ -1074,7 +1010,7 @@ func (s *AIService) GenerateSpecificStageDocuments(ctx context.Context, req *mod
 // GeneratePUMLWithUser 使用用户配置生成PUML图表
 func (s *AIService) GeneratePUMLWithUser(ctx context.Context, req *model.GeneratePUMLRequest, userID uuid.UUID) (*model.PUMLDiagram, error) {
 	// 获取用户AI配置
-	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	userConfig, err := s.repo.GetUserAIConfig(userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
 	}
@@ -1134,7 +1070,7 @@ func (s *AIService) GeneratePUMLWithUser(ctx context.Context, req *model.Generat
 		return nil, fmt.Errorf("无效的分析ID: %w", err)
 	}
 
-	analysis, err := s.aiRepo.GetRequirementAnalysis(analysisID)
+	analysis, err := s.repo.GetRequirementAnalysis(analysisID)
 	if err != nil {
 		return nil, fmt.Errorf("获取需求分析失败: %w", err)
 	}
@@ -1180,7 +1116,7 @@ func (s *AIService) GeneratePUMLWithUser(ctx context.Context, req *model.Generat
 	}
 
 	// 保存到数据库
-	if err := s.aiRepo.CreatePUMLDiagram(diagram); err != nil {
+	if err := s.repo.CreatePUMLDiagram(diagram); err != nil {
 		return nil, fmt.Errorf("保存PUML图表失败: %w", err)
 	}
 
@@ -1190,7 +1126,7 @@ func (s *AIService) GeneratePUMLWithUser(ctx context.Context, req *model.Generat
 // GenerateDocumentWithUser 使用用户配置生成开发文档
 func (s *AIService) GenerateDocumentWithUser(ctx context.Context, req *model.GenerateDocumentRequest, userID uuid.UUID) (*model.Document, error) {
 	// 获取用户AI配置
-	userConfig, err := s.aiRepo.GetUserAIConfig(userID)
+	userConfig, err := s.repo.GetUserAIConfig(userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取AI配置失败，请先在设置中配置AI服务: %w", err)
 	}
@@ -1250,7 +1186,7 @@ func (s *AIService) GenerateDocumentWithUser(ctx context.Context, req *model.Gen
 		return nil, fmt.Errorf("无效的分析ID: %w", err)
 	}
 
-	analysis, err := s.aiRepo.GetRequirementAnalysis(analysisID)
+	analysis, err := s.repo.GetRequirementAnalysis(analysisID)
 	if err != nil {
 		return nil, fmt.Errorf("获取需求分析失败: %w", err)
 	}
@@ -1302,7 +1238,7 @@ func (s *AIService) GenerateDocumentWithUser(ctx context.Context, req *model.Gen
 	}
 
 	// 保存到数据库
-	if err := s.aiRepo.CreateDocument(document); err != nil {
+	if err := s.repo.CreateDocument(document); err != nil {
 		return nil, fmt.Errorf("保存文档失败: %w", err)
 	}
 

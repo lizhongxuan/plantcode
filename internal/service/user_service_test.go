@@ -162,6 +162,47 @@ func (m *MockRepository) UpdateStageProgress(progress *model.StageProgress) erro
 func (m *MockRepository) GetStageProgressByStage(projectID uuid.UUID, stage int) (*model.StageProgress, error) {
 	return nil, nil
 }
+
+// UserAIConfig 相关方法
+func (m *MockRepository) GetUserAIConfig(userID uuid.UUID) (*model.UserAIConfig, error) {
+	return nil, nil
+}
+func (m *MockRepository) CreateUserAIConfig(config *model.UserAIConfig) error {
+	return nil
+}
+func (m *MockRepository) UpdateUserAIConfig(config *model.UserAIConfig) error {
+	return nil
+}
+func (m *MockRepository) DeleteUserAIConfig(userID uuid.UUID) error {
+	return nil
+}
+
+// 扩展方法（用于兼容性）
+func (m *MockRepository) GetRequirementAnalysis(analysisID uuid.UUID) (*model.Requirement, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetRequirementAnalysesByProject(projectID uuid.UUID) ([]*model.Requirement, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetChatSession(sessionID uuid.UUID) (*model.ChatSession, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetChatSessionsByProject(projectID uuid.UUID) ([]*model.ChatSession, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetChatMessages(sessionID uuid.UUID) ([]*model.ChatMessage, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetPUMLDiagram(diagramID uuid.UUID) (*model.PUMLDiagram, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetDocument(documentID uuid.UUID) (*model.Document, error) {
+	return nil, nil
+}
+func (m *MockRepository) GetQuestions(requirementID uuid.UUID) ([]*model.Question, error) {
+	return nil, nil
+}
+
 func (m *MockRepository) Health() error { return nil }
 
 type UserServiceTestSuite struct {

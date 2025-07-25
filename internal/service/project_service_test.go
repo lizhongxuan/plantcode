@@ -21,7 +21,9 @@ type ProjectServiceTestSuite struct {
 
 func (suite *ProjectServiceTestSuite) SetupTest() {
 	suite.mockRepo = new(MockRepository)
-	suite.projectService = NewProjectService(suite.mockRepo)
+	// 创建一个模拟的ProjectFolderService，传入nil DB
+	folderService := NewProjectFolderService(nil)
+	suite.projectService = NewProjectService(suite.mockRepo, folderService)
 }
 
 func (suite *ProjectServiceTestSuite) TearDownTest() {

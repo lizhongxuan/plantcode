@@ -21,8 +21,7 @@ func (suite *ConfigTestSuite) SetupTest() {
 		"DB_MAX_CONNECTIONS", "DB_MAX_IDLE", "DB_CONN_MAX_LIFETIME",
 		"REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DB",
 		"JWT_SECRET", "JWT_EXPIRES_IN",
-		"AI_PROVIDER", "OPENAI_API_KEY", "CLAUDE_API_KEY",
-		"AI_TIMEOUT", "AI_MAX_RETRIES", "AI_DEFAULT_MODEL", "AI_MAX_TOKENS",
+		"OPENAI_API_KEY", "CLAUDE_API_KEY", "GEMINI_API_KEY",
 	}
 	
 	for _, key := range envKeys {
@@ -74,13 +73,12 @@ func (suite *ConfigTestSuite) TestLoad_DefaultValues() {
 	assert.Equal(suite.T(), 86400, cfg.JWT.ExpiresIn)
 	
 	// AI defaults
-	assert.Equal(suite.T(), "openai", cfg.AI.Provider)
-	assert.Equal(suite.T(), "", cfg.AI.OpenAIKey)
-	assert.Equal(suite.T(), "", cfg.AI.ClaudeKey)
-	assert.Equal(suite.T(), 30, cfg.AI.Timeout)
-	assert.Equal(suite.T(), 3, cfg.AI.MaxRetries)
-	assert.Equal(suite.T(), "gpt-3.5-turbo", cfg.AI.DefaultModel)
-	assert.Equal(suite.T(), 2048, cfg.AI.MaxTokens)
+	assert.Equal(suite.T(), "openai", cfg.AI.DefaultProvider)
+	assert.Equal(suite.T(), "", cfg.AI.OpenAIConfig.APIKey)
+	assert.Equal(suite.T(), "", cfg.AI.ClaudeConfig.APIKey)
+	assert.True(suite.T(), cfg.AI.EnableCache)
+	assert.Equal(suite.T(), "gpt-4", cfg.AI.OpenAIConfig.DefaultModel)
+	assert.Equal(suite.T(), "claude-2", cfg.AI.ClaudeConfig.DefaultModel)
 	
 	// CORS defaults
 	assert.Equal(suite.T(), []string{"http://localhost:3000", "http://localhost:8080"}, cfg.CORS.Origins)
@@ -103,13 +101,9 @@ func (suite *ConfigTestSuite) TestLoad_CustomEnvironmentValues() {
 	os.Setenv("REDIS_DB", "1")
 	os.Setenv("JWT_SECRET", "custom-secret")
 	os.Setenv("JWT_EXPIRES_IN", "3600")
-	os.Setenv("AI_PROVIDER", "claude")
 	os.Setenv("OPENAI_API_KEY", "sk-test-openai")
 	os.Setenv("CLAUDE_API_KEY", "sk-test-claude")
-	os.Setenv("AI_TIMEOUT", "60")
-	os.Setenv("AI_MAX_RETRIES", "5")
-	os.Setenv("AI_DEFAULT_MODEL", "claude-3-opus")
-	os.Setenv("AI_MAX_TOKENS", "4096")
+	os.Setenv("GEMINI_API_KEY", "sk-test-gemini")
 
 	// Act
 	cfg := Load()
@@ -128,13 +122,12 @@ func (suite *ConfigTestSuite) TestLoad_CustomEnvironmentValues() {
 	assert.Equal(suite.T(), 1, cfg.Redis.DB)
 	assert.Equal(suite.T(), "custom-secret", cfg.JWT.Secret)
 	assert.Equal(suite.T(), 3600, cfg.JWT.ExpiresIn)
-	assert.Equal(suite.T(), "claude", cfg.AI.Provider)
-	assert.Equal(suite.T(), "sk-test-openai", cfg.AI.OpenAIKey)
-	assert.Equal(suite.T(), "sk-test-claude", cfg.AI.ClaudeKey)
-	assert.Equal(suite.T(), 60, cfg.AI.Timeout)
-	assert.Equal(suite.T(), 5, cfg.AI.MaxRetries)
-	assert.Equal(suite.T(), "claude-3-opus", cfg.AI.DefaultModel)
-	assert.Equal(suite.T(), 4096, cfg.AI.MaxTokens)
+	assert.Equal(suite.T(), "openai", cfg.AI.DefaultProvider)
+	assert.Equal(suite.T(), "sk-test-openai", cfg.AI.OpenAIConfig.APIKey)
+	assert.Equal(suite.T(), "sk-test-claude", cfg.AI.ClaudeConfig.APIKey)
+	assert.Equal(suite.T(), "sk-test-gemini", cfg.AI.GeminiConfig.APIKey)
+	assert.Equal(suite.T(), "gpt-4", cfg.AI.OpenAIConfig.DefaultModel)
+	assert.Equal(suite.T(), "claude-2", cfg.AI.ClaudeConfig.DefaultModel)
 }
 
 func (suite *ConfigTestSuite) TestLoad_InvalidIntegerEnvironmentValues() {

@@ -75,13 +75,13 @@ func GetTestConfig() *config.Config {
 			ExpiresIn: 3600,
 		},
 		AI: config.AIConfig{
-			Provider:     getTestEnvOrDefault("TEST_AI_PROVIDER", "openai"),
-			OpenAIKey:    getTestEnvOrDefault("TEST_OPENAI_KEY", "test-key"),
-			ClaudeKey:    getTestEnvOrDefault("TEST_CLAUDE_KEY", "test-key"),
-			Timeout:      30,
-			MaxRetries:   3,
-			DefaultModel: "gpt-3.5-turbo",
-			MaxTokens:    2048,
+			DefaultProvider: getTestEnvOrDefault("TEST_AI_PROVIDER", "openai"),
+			EnableCache:     true,
+			CacheTTL:        300,
+			OpenAIConfig: &config.OpenAIConfig{
+				APIKey:       getTestEnvOrDefault("TEST_OPENAI_KEY", "test-key"),
+				DefaultModel: "gpt-3.5-turbo",
+			},
 		},
 		CORS: config.CORSConfig{
 			Origins:     []string{"*"},
