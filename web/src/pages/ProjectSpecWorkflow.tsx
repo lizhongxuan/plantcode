@@ -277,10 +277,60 @@ const ProjectSpecWorkflow: React.FC = () => {
     }
   };
 
-  // PUML预览URL生成
+  // PUML预览组件 - 使用POST请求到本地服务器
+  const PumlPreview: React.FC<{ content: string; style?: React.CSSProperties }> = ({ content, style }) => {
+    const [imageSrc, setImageSrc] = useState<string>('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+      const generateImage = async () => {
+        if (!content.trim()) return;
+        
+        setIsLoading(true);
+        try {
+          const response = await fetch('http://localhost:8888/svg', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain',
+            },
+            body: content
+          });
+          
+          if (response.ok) {
+            const svgText = await response.text();
+            const blob = new Blob([svgText], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            setImageSrc(url);
+          } else {
+            console.error('PlantUML server error:', response.status);
+          }
+        } catch (error) {
+          console.error('Failed to generate PUML image:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      generateImage();
+    }, [content]);
+
+    if (isLoading) {
+      return <div style={{ textAlign: 'center', padding: '20px' }}>正在生成图表...</div>;
+    }
+
+    return imageSrc ? (
+      <img src={imageSrc} alt="PlantUML Diagram" style={style} />
+    ) : (
+      <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+        无法生成图表，请检查PUML语法
+      </div>
+    );
+  };
+
+  // PUML预览URL生成 - 保留作为后备方案
   const getPumlPreviewUrl = (content: string) => {
     try {
-      // 使用PlantUML的压缩编码
+      // 作为后备方案，使用在线服务
       const encoded = btoa(unescape(encodeURIComponent(content)));
       return `https://www.plantuml.com/plantuml/svg/~1${encoded}`;
     } catch (error) {
@@ -508,18 +558,14 @@ const ProjectSpecWorkflow: React.FC = () => {
                       transformOrigin: 'center center',
                       transition: 'transform 0.2s ease'
                     }}>
-                      <iframe
-                        src={getPumlPreviewUrl(documentContent)}
+                      <PumlPreview 
+                        content={documentContent}
                         style={{ 
                           width: '600px', 
                           height: '400px', 
                           border: '1px solid #e8e8e8',
                           borderRadius: '4px',
                           background: '#fff'
-                        }}
-                        title="PlantUML预览"
-                        onError={(e) => {
-                          console.error('PUML preview error:', e);
                         }}
                       />
                     </div>
@@ -1160,8 +1206,8 @@ const ProjectSpecWorkflow: React.FC = () => {
           }}
           onWheel={handleWheel}
         >
-          <iframe
-            src={getPumlPreviewUrl(documentContent)}
+          <PumlPreview 
+            content={documentContent}
             style={{ 
               width: '800px', 
               height: '600px', 
@@ -1169,7 +1215,6 @@ const ProjectSpecWorkflow: React.FC = () => {
               borderRadius: '4px',
               background: '#fff'
             }}
-            title="PlantUML全屏预览"
           />
         </div>
       </Modal>
