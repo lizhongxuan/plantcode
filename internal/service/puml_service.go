@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -53,31 +54,47 @@ type ValidationResult struct {
 func NewPUMLService(cfg *config.PUMLConfig) *PUMLService {
 	pumlServerURL := cfg.ServerURL
 	if pumlServerURL == "" {
-		// 使用官方在线服务器
-		pumlServerURL = "http://www.plantuml.com/plantuml"
+		// 默认使用本地PlantUML服务器
+		pumlServerURL = "http://localhost:8888"
 	}
 
+	// 创建HTTP客户端，禁用代理以避免localhost请求走代理
+	transport := &http.Transport{
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			// 对localhost请求不使用代理
+			if req.URL.Host == "localhost:8888" || req.URL.Host == "127.0.0.1:8888" {
+				return nil, nil
+			}
+			// 其他请求使用默认代理设置
+			return http.ProxyFromEnvironment(req)
+		},
+	}
+	
 	return &PUMLService{
-		serverURL:    pumlServerURL,
-		onlineRenderURL: fmt.Sprintf("%s/svg", pumlServerURL),
+		serverURL:       pumlServerURL,
+		onlineRenderURL: pumlServerURL, // 直接使用服务器URL，不添加/svg后缀
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 		enableCache: true,
-		cache:      make(map[string]*RenderResult),
+		cache:       make(map[string]*RenderResult),
 	}
 }
 
-// RenderPUMLOnline 使用POST请求在线渲染PUML，返回SVG字符串
+// RenderPUMLOnline 使用GET请求在线渲染PUML，返回SVG字符串
 func (s *PUMLService) RenderPUMLOnline(pumlCode string) (string, error) {
-	// 创建POST请求
-	req, err := http.NewRequest("POST", s.onlineRenderURL, strings.NewReader(pumlCode))
+	// 使用GET方式，将PUML代码编码后拼接到URL
+	encoded, err := s.encodePUML(pumlCode)
 	if err != nil {
-		return "", fmt.Errorf("创建PlantUML请求失败: %w", err)
+		return "", fmt.Errorf("编码PUML失败: %w", err)
 	}
-	req.Header.Set("Content-Type", "text/plain; charset=utf-8")
-
-	resp, err := s.httpClient.Do(req)
+	
+	// 构建请求URL
+	url := fmt.Sprintf("%s/svg/%s", s.serverURL, encoded)
+	
+	// 发送GET请求
+	resp, err := s.httpClient.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("请求PlantUML服务失败: %w", err)
 	}
@@ -94,7 +111,13 @@ func (s *PUMLService) RenderPUMLOnline(pumlCode string) (string, error) {
 		return "", fmt.Errorf("读取渲染结果失败: %w", err)
 	}
 
-	return string(svgData), nil
+	// 验证SVG内容
+	svgContent := string(svgData)
+	if !strings.Contains(svgContent, "<svg") {
+		return "", fmt.Errorf("PlantUML服务返回的不是有效的SVG内容")
+	}
+
+	return svgContent, nil
 }
 
 

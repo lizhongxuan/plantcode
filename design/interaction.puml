@@ -1,4 +1,6 @@
 @startuml 交互序列图
+!theme plain
+skinparam defaultFontName "SimHei,Microsoft YaHei,PingFang SC,Hiragino Sans GB,WenQuanYi Micro Hei,sans-serif"
 title AI辅助业务分析与文档生成平台 - 交互流程
 
 participant "用户" as User

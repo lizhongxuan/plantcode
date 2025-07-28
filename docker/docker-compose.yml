@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  plantuml-server:
+    build:
+      context: ./plantuml
+      dockerfile: Dockerfile
+    container_name: plantuml-server-chinese
+    ports:
+      - "8888:8080"
+    environment:
+      - JAVA_OPTS=-Dfile.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8 -Djava.awt.headless=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - plantuml-network
+
+networks:
+  plantuml-network:
+    driver: bridge

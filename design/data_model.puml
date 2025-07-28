@@ -1,4 +1,6 @@
 @startuml 数据模型
+!theme plain
+skinparam defaultFontName "SimHei,Microsoft YaHei,PingFang SC,Hiragino Sans GB,WenQuanYi Micro Hei,sans-serif"
 title AI辅助项目开发平台 - 数据模型图
 
 entity "用户" as User {

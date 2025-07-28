@@ -39,7 +39,7 @@ const OnlinePUMLEditor: React.FC<OnlinePUMLEditorProps> = ({ value, onChange, in
       const response = await fetch('/api/puml/render-online', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: pumlCode }),
+        body: JSON.stringify({ content: pumlCode }),
       });
       const data = await response.json();
       if (data.success && data.imageData) {

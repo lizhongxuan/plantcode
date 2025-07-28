@@ -1,4 +1,6 @@
 @startuml 系统架构图
+!theme plain
+skinparam defaultFontName "SimHei,Microsoft YaHei,PingFang SC,Hiragino Sans GB,WenQuanYi Micro Hei,sans-serif"
 title AI辅助业务分析与文档生成平台 - 架构图
 
 package "前端界面层" {

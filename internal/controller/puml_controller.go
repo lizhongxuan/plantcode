@@ -357,10 +357,10 @@ func (pc *PUMLController) RenderPUMLOnline(c *gin.Context) {
 	log.InfofId(c, "RenderPUMLOnline: 在线PUML渲染成功")
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
-		"message": "在线PUML渲染成功",
-		"code":    http.StatusOK,
+		"success":   true,
+		"imageData": result,
+		"message":   "在线PUML渲染成功",
+		"code":      http.StatusOK,
 	})
 }
 
